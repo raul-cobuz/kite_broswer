@@ -5,15 +5,47 @@
 
 static GtkWidget *notebook;
 static GtkWidget *url_entry;
+static GtkWidget *btn_reload;
 static WebKitUserContentManager *global_content_manager;
 static bool global_dark_mode = false;
 static GtkWidget *find_box;
 static GtkWidget *find_entry;
 
-void create_new_tab(const gchar* url);
-void create_incognito_tab(const gchar* url);
-static void toggle_dark_mode(); 
+static void create_tab(const gchar *url, gboolean incognito);
+static void create_new_tab(const gchar *url);
+static void create_incognito_tab(const gchar *url);
+static void toggle_dark_mode();
 static void set_webview_dark_mode(WebKitWebView *web_view, bool enable);
+static void update_reload_button(WebKitWebView *web_view);
+static void on_download_started(WebKitWebContext *context, WebKitDownload *download, gpointer user_data);
+
+static gboolean webview_is_incognito(WebKitWebView *web_view) {
+    return GPOINTER_TO_INT(g_object_get_data(G_OBJECT(web_view), "is_incognito"));
+}
+
+// Look for filters.json next to the binary, then CWD, then ~/.config/kite/
+static gchar* find_filters_json_path() {
+    gchar *exe_path = g_file_read_link("/proc/self/exe", NULL);
+    if (exe_path) {
+        gchar *exe_dir = g_path_get_dirname(exe_path);
+        gchar *candidate = g_build_filename(exe_dir, "filters.json", NULL);
+        g_free(exe_dir);
+        g_free(exe_path);
+        if (g_file_test(candidate, G_FILE_TEST_IS_REGULAR))
+            return candidate;
+        g_free(candidate);
+    }
+
+    if (g_file_test("filters.json", G_FILE_TEST_IS_REGULAR))
+        return g_strdup("filters.json");
+
+    gchar *config_path = g_build_filename(g_get_user_config_dir(), "kite", "filters.json", NULL);
+    if (g_file_test(config_path, G_FILE_TEST_IS_REGULAR))
+        return config_path;
+    g_free(config_path);
+
+    return nullptr;
+}
 
 WebKitWebView* get_active_webview() {
     gint page_num = gtk_notebook_get_current_page(GTK_NOTEBOOK(notebook));
@@ -79,17 +111,19 @@ void init_adblocker() {
     gchar *rules_content = nullptr;
     gsize length = 0;
     GError *file_error = nullptr;
+    gchar *filters_path = find_filters_json_path();
 
-    if (g_file_get_contents("filters.json", &rules_content, &length, &file_error)) {
-        g_print("[Kite] Se incarca filters.json (%lu bytes)...\n", length);
+    if (filters_path && g_file_get_contents(filters_path, &rules_content, &length, &file_error)) {
+        g_print("[Kite] Se incarca %s (%lu bytes)...\n", filters_path, length);
         GBytes *bytes = g_bytes_new_take(rules_content, length);
         webkit_user_content_filter_store_save(store, "kite_rules", bytes, NULL, on_filter_saved, NULL);
         g_bytes_unref(bytes);
     } else {
         if (file_error) g_error_free(file_error);
-        g_printerr("[Kite] EROARE: Fisierul filters.json lipseste. Ruleaza scriptul Python!\n");
+        g_printerr("[Kite] EROARE: filters.json lipseste (cautat langa binar, CWD, ~/.config/kite/). Ruleaza: python3 update_filters.py\n");
         g_object_unref(store);
     }
+    g_free(filters_path);
 }
 
 static void on_url_activate(GtkEntry *entry, gpointer user_data) {
@@ -130,11 +164,44 @@ static void on_url_activate(GtkEntry *entry, gpointer user_data) {
     webkit_web_view_load_uri(web_view, target_url.c_str());
 }
 
+static void update_reload_button(WebKitWebView *web_view) {
+    if (!btn_reload || !web_view) return;
+    gboolean loading = webkit_web_view_is_loading(web_view);
+    GtkWidget *image = gtk_image_new_from_icon_name(
+        loading ? "process-stop-symbolic" : "view-refresh-symbolic",
+        GTK_ICON_SIZE_BUTTON);
+    gtk_button_set_image(GTK_BUTTON(btn_reload), image);
+    gtk_widget_set_tooltip_text(btn_reload, loading ? "Stop loading" : "Reload");
+}
+
 static void on_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_event, gpointer user_data) {
-    if (load_event == WEBKIT_LOAD_COMMITTED && web_view == get_active_webview()) {
+    GtkWidget *label = GTK_WIDGET(g_object_get_data(G_OBJECT(web_view), "tab_label"));
+
+    if (load_event == WEBKIT_LOAD_STARTED && label) {
+        gtk_label_set_text(GTK_LABEL(label), "Loading...");
+        gtk_widget_set_tooltip_text(label, "Loading...");
+    }
+
+    if (load_event == WEBKIT_LOAD_FINISHED && label) {
+        const gchar *title = webkit_web_view_get_title(web_view);
+        if (title && *title) {
+            gtk_label_set_text(GTK_LABEL(label), title);
+            gtk_widget_set_tooltip_text(label, title);
+        }
+    }
+
+    if (web_view != get_active_webview()) return;
+
+    if (load_event == WEBKIT_LOAD_COMMITTED) {
         if (global_dark_mode) set_webview_dark_mode(web_view, true);
         const gchar *uri = webkit_web_view_get_uri(web_view);
         gtk_entry_set_text(GTK_ENTRY(url_entry), uri ? uri : "");
+    }
+
+    if (load_event == WEBKIT_LOAD_STARTED ||
+        load_event == WEBKIT_LOAD_FINISHED ||
+        load_event == WEBKIT_LOAD_COMMITTED) {
+        update_reload_button(web_view);
     }
 }
 
@@ -155,27 +222,47 @@ static void on_tab_close_clicked(GtkButton *btn, GtkWidget *child_page) {
 static GtkWidget* on_create_tab(WebKitWebView *web_view, WebKitNavigationAction *action, gpointer user_data) {
     WebKitURIRequest *req = webkit_navigation_action_get_request(action);
     const gchar *uri = webkit_uri_request_get_uri(req);
-    create_new_tab(uri ? uri : "https://duckduckgo.com");
+    create_tab(uri ? uri : "https://duckduckgo.com", webview_is_incognito(web_view));
     return GTK_WIDGET(get_active_webview());
 }
 
-void create_new_tab(const gchar* url) {
-    WebKitWebView *web_view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, 
-                                              "user-content-manager", global_content_manager, NULL));
-
+static void apply_webview_settings(WebKitWebView *web_view) {
     WebKitSettings *settings = webkit_web_view_get_settings(web_view);
     webkit_settings_set_enable_developer_extras(settings, TRUE);
     webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
     webkit_settings_set_enable_webgl(settings, TRUE);
     webkit_settings_set_enable_smooth_scrolling(settings, TRUE);
-    webkit_settings_set_user_agent(settings, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+    webkit_settings_set_user_agent(settings,
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
     webkit_web_view_set_settings(web_view, settings);
+}
+
+static void create_tab(const gchar *url, gboolean incognito) {
+    WebKitWebContext *ephemeral_context = nullptr;
+    WebKitWebView *web_view;
+
+    if (incognito) {
+        WebKitWebsiteDataManager *ephemeral_dm = webkit_website_data_manager_new_ephemeral();
+        ephemeral_context = webkit_web_context_new_with_website_data_manager(ephemeral_dm);
+        g_signal_connect(ephemeral_context, "download-started", G_CALLBACK(on_download_started), NULL);
+        web_view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+            "web-context", ephemeral_context,
+            "user-content-manager", global_content_manager,
+            NULL));
+        g_object_set_data(G_OBJECT(web_view), "is_incognito", GINT_TO_POINTER(1));
+    } else {
+        web_view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+            "user-content-manager", global_content_manager, NULL));
+    }
+
+    apply_webview_settings(web_view);
 
     GtkWidget *tab_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    GtkWidget *tab_label = gtk_label_new("Loading...");
+    GtkWidget *tab_label = gtk_label_new(incognito ? "Incognito" : "Loading...");
     gtk_label_set_ellipsize(GTK_LABEL(tab_label), PANGO_ELLIPSIZE_END);
     gtk_label_set_max_width_chars(GTK_LABEL(tab_label), 18);
     gtk_label_set_width_chars(GTK_LABEL(tab_label), 10);
+    g_object_set_data(G_OBJECT(web_view), "tab_label", tab_label);
 
     GtkWidget *close_btn = gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
     gtk_button_set_relief(GTK_BUTTON(close_btn), GTK_RELIEF_NONE);
@@ -195,58 +282,17 @@ void create_new_tab(const gchar* url) {
     gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(notebook), GTK_WIDGET(web_view), TRUE);
     gtk_notebook_set_current_page(GTK_NOTEBOOK(notebook), index);
     webkit_web_view_load_uri(web_view, url);
+
+    if (ephemeral_context)
+        g_object_unref(ephemeral_context);
 }
 
-void create_incognito_tab(const gchar* url) {
-   
-    WebKitWebsiteDataManager *ephemeral_dm = webkit_website_data_manager_new_ephemeral();
-    WebKitWebContext *ephemeral_context = webkit_web_context_new_with_website_data_manager(ephemeral_dm);
+static void create_new_tab(const gchar *url) {
+    create_tab(url, FALSE);
+}
 
-    
-    WebKitWebView *web_view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, 
-                                              "web-context", ephemeral_context,
-                                              "user-content-manager", global_content_manager, 
-                                              NULL));
-
-    WebKitSettings *settings = webkit_web_view_get_settings(web_view);
-    webkit_settings_set_enable_developer_extras(settings, TRUE);
-   webkit_settings_set_hardware_acceleration_policy(settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_ON_DEMAND);
-    webkit_settings_set_enable_webgl(settings, TRUE);
-    webkit_settings_set_enable_smooth_scrolling(settings, TRUE);
-
-webkit_settings_set_user_agent(settings, "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");    webkit_web_view_set_settings(web_view, settings);
-
-    g_object_set_data(G_OBJECT(web_view), "is_incognito", GINT_TO_POINTER(1));
-    GtkWidget *tab_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-    
-    
-    GtkWidget *tab_label = gtk_label_new("Incognito");
-    gtk_label_set_ellipsize(GTK_LABEL(tab_label), PANGO_ELLIPSIZE_END);
-    gtk_label_set_max_width_chars(GTK_LABEL(tab_label), 18);
-    gtk_label_set_width_chars(GTK_LABEL(tab_label), 10);
-
-    GtkWidget *close_btn = gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
-    gtk_button_set_relief(GTK_BUTTON(close_btn), GTK_RELIEF_NONE);
-
-    gtk_box_pack_start(GTK_BOX(tab_box), tab_label, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(tab_box), close_btn, FALSE, FALSE, 0);
-
-    g_signal_connect(web_view, "load-changed", G_CALLBACK(on_load_changed), NULL);
-    g_signal_connect(web_view, "notify::title", G_CALLBACK(on_title_changed), tab_label);
-    
-   
-    g_signal_connect(web_view, "create", G_CALLBACK(on_create_tab), NULL); 
-    g_signal_connect(close_btn, "clicked", G_CALLBACK(on_tab_close_clicked), GTK_WIDGET(web_view));
-
-    gtk_widget_show_all(tab_box);
-    gtk_widget_show(GTK_WIDGET(web_view));
-
-    gint index = gtk_notebook_append_page(GTK_NOTEBOOK(notebook), GTK_WIDGET(web_view), tab_box);
-    gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(notebook), GTK_WIDGET(web_view), TRUE);
-    gtk_notebook_set_current_page(GTK_NOTEBOOK(notebook), index);
-    
-    webkit_web_view_load_uri(web_view, url);
-    g_object_unref(ephemeral_context); // Curățare
+static void create_incognito_tab(const gchar *url) {
+    create_tab(url, TRUE);
 }
 
 static void on_back_clicked(GtkButton *btn, gpointer user_data) {
@@ -259,7 +305,11 @@ static void on_forward_clicked(GtkButton *btn, gpointer user_data) {
 }
 static void on_reload_clicked(GtkButton *btn, gpointer user_data) {
     WebKitWebView *web_view = get_active_webview();
-    if (web_view) webkit_web_view_reload(web_view);
+    if (!web_view) return;
+    if (webkit_web_view_is_loading(web_view))
+        webkit_web_view_stop_loading(web_view);
+    else
+        webkit_web_view_reload(web_view);
 }
 static void on_new_tab_clicked(GtkButton *btn, gpointer user_data) {
     create_new_tab("https://duckduckgo.com");
@@ -267,20 +317,18 @@ static void on_new_tab_clicked(GtkButton *btn, gpointer user_data) {
 
 static void on_tab_switched(GtkNotebook *nb, GtkWidget *page, guint page_num, gpointer user_data) {
     WebKitWebView *web_view = WEBKIT_WEB_VIEW(page);
-    
-   
+
     const gchar *uri = webkit_web_view_get_uri(web_view);
     gtk_entry_set_text(GTK_ENTRY(url_entry), uri ? uri : "");
 
-    
-    gboolean is_incognito = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(web_view), "is_incognito"));
     GtkStyleContext *context = gtk_widget_get_style_context(url_entry);
-    
-    if (is_incognito) {
+    if (webview_is_incognito(web_view)) {
         gtk_style_context_add_class(context, "incognito-mode");
     } else {
         gtk_style_context_remove_class(context, "incognito-mode");
     }
+
+    update_reload_button(web_view);
 }
 static void set_webview_dark_mode(WebKitWebView *web_view, bool enable) {
     gchar *js = g_strdup_printf(
@@ -336,6 +384,19 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     }
 
     if (event->state & GDK_CONTROL_MASK) {
+        // Ctrl+Tab / Ctrl+Shift+Tab — cycle tabs
+        if (event->keyval == GDK_KEY_Tab || event->keyval == GDK_KEY_ISO_Left_Tab) {
+            gint n = gtk_notebook_get_n_pages(GTK_NOTEBOOK(notebook));
+            if (n > 0) {
+                gint cur = gtk_notebook_get_current_page(GTK_NOTEBOOK(notebook));
+                gboolean backward = (event->state & GDK_SHIFT_MASK) ||
+                                    event->keyval == GDK_KEY_ISO_Left_Tab;
+                gint next = backward ? (cur - 1 + n) % n : (cur + 1) % n;
+                gtk_notebook_set_current_page(GTK_NOTEBOOK(notebook), next);
+            }
+            return TRUE;
+        }
+
         // Ctrl + Shift + D pentru Dark Mode
         if ((event->state & GDK_SHIFT_MASK) && (event->keyval == GDK_KEY_D || event->keyval == GDK_KEY_d)) {
             toggle_dark_mode();
@@ -451,10 +512,12 @@ int main(int argc, char* argv[]) {
 
     GtkWidget *btn_back = gtk_button_new_from_icon_name("go-previous-symbolic", GTK_ICON_SIZE_BUTTON);
     GtkWidget *btn_forward = gtk_button_new_from_icon_name("go-next-symbolic", GTK_ICON_SIZE_BUTTON);
-    GtkWidget *btn_reload = gtk_button_new_from_icon_name("view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
+    btn_reload = gtk_button_new_from_icon_name("view-refresh-symbolic", GTK_ICON_SIZE_BUTTON);
+    gtk_button_set_always_show_image(GTK_BUTTON(btn_reload), TRUE);
     GtkWidget *btn_new_tab = gtk_button_new_from_icon_name("list-add-symbolic", GTK_ICON_SIZE_BUTTON);
     GtkWidget *btn_dark = gtk_button_new_from_icon_name("weather-clear-night-symbolic", GTK_ICON_SIZE_BUTTON);
 
+    gtk_widget_set_tooltip_text(btn_reload, "Reload");
     gtk_widget_set_tooltip_text(btn_dark, "Toggle Dark Mode (F9 / Ctrl+Shift+D)");
 
     g_signal_connect(btn_back, "clicked", G_CALLBACK(on_back_clicked), NULL);

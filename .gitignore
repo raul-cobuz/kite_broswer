@@ -3,3 +3,12 @@ out/
 target/
 *.class
 .DS_Store
+
+# Build output
+mybrowser
+*.o
+*.a
+
+# Editor
+.vscode/
+.cursor/
