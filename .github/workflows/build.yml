@@ -18,6 +18,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            cmake \
             pkg-config \
             libgtk-3-dev \
             libwebkit2gtk-4.1-dev \
@@ -25,6 +26,12 @@ jobs:
 
       - name: Build
         run: make
+
+      - name: Build debug
+        run: make debug
+
+      - name: Run tests
+        run: make test
 
       - name: Generate ad-block filters
         run: make filters

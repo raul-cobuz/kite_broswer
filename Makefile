@@ -1,29 +1,28 @@
-CXX      ?= g++
-CXXFLAGS ?= -std=c++17 -Wall -O2
-PKGS     := gtk+-3.0 webkit2gtk-4.1
-CFLAGS_PKG := $(shell pkg-config --cflags $(PKGS))
-LIBS_PKG   := $(shell pkg-config --libs $(PKGS))
+BUILD_DIR ?= build
+RELEASE_DIR := $(BUILD_DIR)/release
+DEBUG_DIR := $(BUILD_DIR)/debug
+JOBS ?= $(shell nproc 2>/dev/null || echo 2)
 
-TARGET       := mybrowser
-DEBUG_TARGET := $(TARGET)-debug
-SRC          := main.cpp
-DEBUG_FLAGS  := -std=c++17 -Wall -Wextra -Wno-unused-parameter -g -O0
+.PHONY: all debug run test filters clean
 
-.PHONY: all clean run filters debug
-
-all: $(TARGET)
-
-$(TARGET): $(SRC)
-	$(CXX) $(CXXFLAGS) $(CFLAGS_PKG) -o $@ $< $(LIBS_PKG)
+all:
+	cmake -S . -B $(RELEASE_DIR) -DCMAKE_BUILD_TYPE=Release
+	cmake --build $(RELEASE_DIR) --target mybrowser --parallel $(JOBS)
 
 debug:
-	$(CXX) $(DEBUG_FLAGS) $(CFLAGS_PKG) -o $(DEBUG_TARGET) $(SRC) $(LIBS_PKG)
+	cmake -S . -B $(DEBUG_DIR) -DCMAKE_BUILD_TYPE=Debug
+	cmake --build $(DEBUG_DIR) --target mybrowser-debug --parallel $(JOBS)
+
+test:
+	cmake -S . -B $(RELEASE_DIR) -DCMAKE_BUILD_TYPE=Release
+	cmake --build $(RELEASE_DIR) --target test_url_utils test_settings --parallel $(JOBS)
+	ctest --test-dir $(RELEASE_DIR) --output-on-failure
 
 filters:
 	python3 update_filters.py
 
-run: $(TARGET) filters
-	./$(TARGET)
+run: all filters
+	./mybrowser
 
 clean:
-	rm -f $(TARGET) $(DEBUG_TARGET)
+	rm -rf $(BUILD_DIR) mybrowser mybrowser-debug

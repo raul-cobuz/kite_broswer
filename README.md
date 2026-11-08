@@ -5,13 +5,23 @@ A lightweight Linux browser built with GTK3 and WebKitGTK.
 ## Dependencies (Ubuntu / Debian)
 
 ```bash
-sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev python3
+sudo apt install build-essential cmake pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev python3
 ```
 
 ## Build
 
 ```bash
-make
+make          # optimized build -> ./mybrowser
+make debug    # debug build -> ./mybrowser-debug
+make test     # unit tests (URL handling, settings persistence)
+```
+
+The build uses CMake and writes intermediates to `build/`. A direct CMake build works too:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
 
 ## Ad-block filters
@@ -65,3 +75,11 @@ Settings and remembered permission decisions are stored in `~/.config/kite/setti
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom |
 
 Omnibox bangs: `!yt`, `!gh`, `!w`, `!r` (YouTube, GitHub, Wikipedia, Reddit).
+
+## Layout
+
+```
+src/        browser modules and shared state
+tests/      unit tests for UI-independent logic
+Makefile    convenience wrapper around CMake
+```
