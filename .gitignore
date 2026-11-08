@@ -6,6 +6,7 @@ target/
 
 # Build output
 mybrowser
+mybrowser-debug
 *.o
 *.a
 
