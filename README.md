@@ -34,6 +34,20 @@ make run
 
 `filters.json` is loaded from the same directory as the executable (or from the current working directory as a fallback).
 
+## Features
+
+- Tabbed browsing with incognito tabs that share one ephemeral session
+- Permission prompts (camera/microphone, location, notifications, clipboard, and more) with optional per-site memory
+- Friendly error pages for network failures, TLS certificate errors, and renderer crashes
+- Persistent dark mode
+- Find bar with match count and per-tab search state
+- Omnibox normalization: `localhost`/IP addresses use `http://`, domains use `https://`, absolute paths open as `file://`, everything else searches DuckDuckGo
+- Ad-blocking via WebKit content blockers
+
+## Settings
+
+Settings and remembered permission decisions are stored in `~/.config/kite/settings.ini`.
+
 ## Shortcuts
 
 | Shortcut | Action |
