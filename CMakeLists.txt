@@ -9,14 +9,17 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
 pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 pkg_check_modules(WEBKIT2 REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
+pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
 
 # Testable, UI-independent logic.
 add_library(kite_core STATIC
+    src/history.cpp
+    src/session.cpp
     src/settings.cpp
     src/url_utils.cpp
 )
 target_include_directories(kite_core PUBLIC src)
-target_link_libraries(kite_core PUBLIC PkgConfig::GLIB)
+target_link_libraries(kite_core PUBLIC PkgConfig::GLIB PkgConfig::SQLITE3)
 target_compile_options(kite_core PRIVATE -Wall -Wextra)
 
 set(KITE_UI_SOURCES
@@ -26,6 +29,7 @@ set(KITE_UI_SOURCES
     src/downloads.cpp
     src/errors.cpp
     src/find_bar.cpp
+    src/kite_pages.cpp
     src/permissions.cpp
     src/tabs.cpp
 )
@@ -57,4 +61,14 @@ if(BUILD_TESTING)
     target_link_libraries(test_settings PRIVATE kite_core)
     target_compile_options(test_settings PRIVATE -Wall -Wextra)
     add_test(NAME settings COMMAND test_settings)
+
+    add_executable(test_history tests/test_history.cpp)
+    target_link_libraries(test_history PRIVATE kite_core)
+    target_compile_options(test_history PRIVATE -Wall -Wextra)
+    add_test(NAME history COMMAND test_history)
+
+    add_executable(test_session tests/test_session.cpp)
+    target_link_libraries(test_session PRIVATE kite_core)
+    target_compile_options(test_session PRIVATE -Wall -Wextra)
+    add_test(NAME session COMMAND test_session)
 endif()

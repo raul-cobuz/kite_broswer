@@ -12,6 +12,7 @@ struct BrowserState {
     GtkWidget *url_entry = nullptr;
     GtkWidget *btn_reload = nullptr;
     GtkWidget *btn_dark = nullptr;
+    GtkWidget *btn_bookmark = nullptr;
     GtkWidget *progress_bar = nullptr;
     GtkWidget *find_box = nullptr;
     GtkWidget *find_entry = nullptr;
@@ -19,6 +20,8 @@ struct BrowserState {
 
     bool url_entry_user_edited = false;
     bool updating_url_entry = false;
+    bool updating_bookmark_button = false;
+    bool restoring_session = false;
 };
 
 extern BrowserState browser;
@@ -34,4 +37,6 @@ void on_progress_changed(GObject *object, GParamSpec *pspec, gpointer user_data)
 
 void focus_url_bar();
 void close_current_tab();
+void update_bookmark_button(WebKitWebView *web_view);
+void save_browser_session();
 void create_browser_window();

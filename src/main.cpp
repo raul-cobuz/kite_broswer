@@ -5,11 +5,17 @@
 #include "browser_window.h"
 #include "dark_mode.h"
 #include "downloads.h"
+#include "history.h"
+#include "kite_pages.h"
 #include "settings.h"
 
 int main(int argc, char *argv[]) {
     gtk_init(&argc, &argv);
+    g_set_application_name("Kite Browser");
+
     load_settings();
+    save_settings();
+    history_init();
 
     GtkCssProvider *css_provider = gtk_css_provider_new();
     gtk_css_provider_load_from_data(
@@ -23,10 +29,12 @@ int main(int argc, char *argv[]) {
 
     WebKitWebContext *context = webkit_web_context_get_default();
     webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_WEB_BROWSER);
+    init_kite_pages(context);
     init_downloads();
 
     create_browser_window();
     gtk_main();
 
+    history_close();
     return 0;
 }

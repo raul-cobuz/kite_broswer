@@ -9,7 +9,7 @@ static bool starts_with(const std::string &text, const gchar *prefix) {
 
 static bool has_known_scheme(const std::string &text) {
     return starts_with(text, "http://") || starts_with(text, "https://") || starts_with(text, "file://") ||
-           starts_with(text, "about:") || starts_with(text, "view-source:");
+           starts_with(text, "about:") || starts_with(text, "view-source:") || starts_with(text, "kite://");
 }
 
 static bool is_local_host(const std::string &text) {
@@ -65,6 +65,28 @@ std::string normalize_url(const std::string &text) {
         return "https://" + text;
 
     return search_url(text);
+}
+
+std::string url_host(const std::string &url) {
+    if (url.empty())
+        return "";
+
+    GError *error = nullptr;
+    GUri *parsed = g_uri_parse(url.c_str(), G_URI_FLAGS_NONE, &error);
+    if (!parsed) {
+        g_clear_error(&error);
+        return "";
+    }
+
+    const gchar *host = g_uri_get_host(parsed);
+    std::string result;
+    if (host && *host) {
+        gchar *lower = g_ascii_strdown(host, -1);
+        result = lower;
+        g_free(lower);
+    }
+    g_uri_unref(parsed);
+    return result;
 }
 
 std::string resolve_url_input(const std::string &text) {

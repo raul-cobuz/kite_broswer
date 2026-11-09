@@ -36,6 +36,8 @@ int main() {
     expect_eq(normalize_url("http://example.com/a?b=1"), "http://example.com/a?b=1", "http kept");
     expect_eq(normalize_url("about:blank"), "about:blank", "about scheme kept");
     expect_eq(normalize_url("view-source:https://example.com"), "view-source:https://example.com", "view-source kept");
+    expect_eq(normalize_url("kite://newtab"), "kite://newtab", "kite scheme kept");
+    expect_eq(normalize_url("kite://history"), "kite://history", "kite history kept");
 
     expect_eq(normalize_url("localhost"), "http://localhost", "localhost");
     expect_eq(normalize_url("localhost:8080"), "http://localhost:8080", "localhost with port");
@@ -81,6 +83,13 @@ int main() {
               "https://en.wikipedia.org/wiki/Special:Search?search=Kite%20Browser", "Wikipedia bang");
     expect_eq(resolve_url_input("!r linux"), "https://www.reddit.com/search/?q=linux", "Reddit bang");
     expect_eq(resolve_url_input("example.com"), "https://example.com", "regular input uses normalization");
+
+    expect_eq(url_host("https://Example.COM/path"), "example.com", "host is lowercased");
+    expect_eq(url_host("http://127.0.0.1:8080/admin"), "127.0.0.1", "IPv4 host");
+    expect_eq(url_host("https://[::1]:8443/"), "::1", "IPv6 host");
+    expect_eq(url_host("file:///tmp/page.html"), "", "file URL has no host");
+    expect_eq(url_host("not a url"), "", "invalid URL has no host");
+    expect_eq(url_host(""), "", "empty URL has no host");
 
     if (failures) {
         std::fprintf(stderr, "%d URL test(s) failed\n", failures);
