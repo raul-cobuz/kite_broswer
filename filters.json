@@ -1,7 +1,20 @@
 [
   {
     "trigger": {
-      "url-filter": "aax\\.amazon-adsystem\\.com"
+      "url-filter": "^https?://([^/]+\\.)?33across\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -9,7 +22,20 @@
   },
   {
     "trigger": {
-      "url-filter": "admob\\.com"
+      "url-filter": "^https?://([^/]+\\.)?aax\\.amazon-adsystem\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -17,7 +43,20 @@
   },
   {
     "trigger": {
-      "url-filter": "adnxs\\.com"
+      "url-filter": "^https?://([^/]+\\.)?adform\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -25,7 +64,20 @@
   },
   {
     "trigger": {
-      "url-filter": "adroll\\.com"
+      "url-filter": "^https?://([^/]+\\.)?adkernel\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -33,7 +85,20 @@
   },
   {
     "trigger": {
-      "url-filter": "ads-twitter\\.com"
+      "url-filter": "^https?://([^/]+\\.)?admob\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -41,7 +106,20 @@
   },
   {
     "trigger": {
-      "url-filter": "ads\\.tiktok\\.com"
+      "url-filter": "^https?://([^/]+\\.)?adnxs\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -49,7 +127,20 @@
   },
   {
     "trigger": {
-      "url-filter": "adswizz\\.com"
+      "url-filter": "^https?://([^/]+\\.)?adotmob\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -57,7 +148,20 @@
   },
   {
     "trigger": {
-      "url-filter": "amazon-adsystem\\.com"
+      "url-filter": "^https?://([^/]+\\.)?adroll\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -65,7 +169,20 @@
   },
   {
     "trigger": {
-      "url-filter": "amplitude\\.com"
+      "url-filter": "^https?://([^/]+\\.)?ads\\.linkedin\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -73,7 +190,20 @@
   },
   {
     "trigger": {
-      "url-filter": "analytics\\.google\\.com"
+      "url-filter": "^https?://([^/]+\\.)?ads\\.yahoo\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -81,7 +211,20 @@
   },
   {
     "trigger": {
-      "url-filter": "analytics\\.tiktok\\.com"
+      "url-filter": "^https?://([^/]+\\.)?adsrvr\\.org",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -89,7 +232,20 @@
   },
   {
     "trigger": {
-      "url-filter": "applovin\\.com"
+      "url-filter": "^https?://([^/]+\\.)?adswizz\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -97,7 +253,20 @@
   },
   {
     "trigger": {
-      "url-filter": "audio-ak-spotify-com\\.akamaized\\.net"
+      "url-filter": "^https?://([^/]+\\.)?advertising\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -105,7 +274,20 @@
   },
   {
     "trigger": {
-      "url-filter": "bluekai\\.com"
+      "url-filter": "^https?://([^/]+\\.)?amazon-adsystem\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -113,7 +295,20 @@
   },
   {
     "trigger": {
-      "url-filter": "chartboost\\.com"
+      "url-filter": "^https?://([^/]+\\.)?applovin\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -121,7 +316,20 @@
   },
   {
     "trigger": {
-      "url-filter": "clarity\\.ms"
+      "url-filter": "^https?://([^/]+\\.)?audio-ak-spotify-com\\.akamaized\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -129,7 +337,20 @@
   },
   {
     "trigger": {
-      "url-filter": "connect\\.facebook\\.net"
+      "url-filter": "^https?://([^/]+\\.)?bidswitch\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -137,7 +358,20 @@
   },
   {
     "trigger": {
-      "url-filter": "criteo\\.com"
+      "url-filter": "^https?://([^/]+\\.)?casalemedia\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -145,7 +379,20 @@
   },
   {
     "trigger": {
-      "url-filter": "criteo\\.net"
+      "url-filter": "^https?://([^/]+\\.)?chartboost\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -153,7 +400,20 @@
   },
   {
     "trigger": {
-      "url-filter": "crwdcntrl\\.net"
+      "url-filter": "^https?://([^/]+\\.)?criteo\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -161,7 +421,20 @@
   },
   {
     "trigger": {
-      "url-filter": "ct\\.pinterest\\.com"
+      "url-filter": "^https?://([^/]+\\.)?criteo\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -169,7 +442,20 @@
   },
   {
     "trigger": {
-      "url-filter": "doubleclick\\.net"
+      "url-filter": "^https?://([^/]+\\.)?districtm\\.io",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -177,7 +463,20 @@
   },
   {
     "trigger": {
-      "url-filter": "google-analytics\\.com"
+      "url-filter": "^https?://([^/]+\\.)?doubleclick\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -185,7 +484,20 @@
   },
   {
     "trigger": {
-      "url-filter": "googleadservices\\.com"
+      "url-filter": "^https?://([^/]+\\.)?flashtalking\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -193,7 +505,20 @@
   },
   {
     "trigger": {
-      "url-filter": "googlesyndication\\.com"
+      "url-filter": "^https?://([^/]+\\.)?gemini\\.yahoo\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -201,7 +526,20 @@
   },
   {
     "trigger": {
-      "url-filter": "googletagmanager\\.com"
+      "url-filter": "^https?://([^/]+\\.)?googleadservices\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -209,7 +547,20 @@
   },
   {
     "trigger": {
-      "url-filter": "hotjar\\.com"
+      "url-filter": "^https?://([^/]+\\.)?googlesyndication\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -217,7 +568,20 @@
   },
   {
     "trigger": {
-      "url-filter": "imasdk\\.googleapis\\.com"
+      "url-filter": "^https?://([^/]+\\.)?gumgum\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -225,7 +589,20 @@
   },
   {
     "trigger": {
-      "url-filter": "inmobi\\.com"
+      "url-filter": "^https?://([^/]+\\.)?imasdk\\.googleapis\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -233,7 +610,20 @@
   },
   {
     "trigger": {
-      "url-filter": "licdn\\.com"
+      "url-filter": "^https?://([^/]+\\.)?indexww\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -241,7 +631,20 @@
   },
   {
     "trigger": {
-      "url-filter": "media\\.net"
+      "url-filter": "^https?://([^/]+\\.)?inmobi\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -249,7 +652,20 @@
   },
   {
     "trigger": {
-      "url-filter": "mgid\\.com"
+      "url-filter": "^https?://([^/]+\\.)?ironsrc\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -257,7 +673,20 @@
   },
   {
     "trigger": {
-      "url-filter": "mintegral\\.com"
+      "url-filter": "^https?://([^/]+\\.)?lijit\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -265,7 +694,20 @@
   },
   {
     "trigger": {
-      "url-filter": "mixpanel\\.com"
+      "url-filter": "^https?://([^/]+\\.)?mathtag\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -273,7 +715,20 @@
   },
   {
     "trigger": {
-      "url-filter": "moatads\\.com"
+      "url-filter": "^https?://([^/]+\\.)?media\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -281,7 +736,20 @@
   },
   {
     "trigger": {
-      "url-filter": "mxpnl\\.com"
+      "url-filter": "^https?://([^/]+\\.)?mgid\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -289,7 +757,20 @@
   },
   {
     "trigger": {
-      "url-filter": "nativo\\.com"
+      "url-filter": "^https?://([^/]+\\.)?mintegral\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -297,7 +778,20 @@
   },
   {
     "trigger": {
-      "url-filter": "ntv\\.io"
+      "url-filter": "^https?://([^/]+\\.)?moatads\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -305,7 +799,20 @@
   },
   {
     "trigger": {
-      "url-filter": "outbrain\\.com"
+      "url-filter": "^https?://([^/]+\\.)?nativo\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -313,7 +820,20 @@
   },
   {
     "trigger": {
-      "url-filter": "pagead2\\.googlesyndication\\.com"
+      "url-filter": "^https?://([^/]+\\.)?ntv\\.io",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -321,7 +841,20 @@
   },
   {
     "trigger": {
-      "url-filter": "pubmatic\\.com"
+      "url-filter": "^https?://([^/]+\\.)?openx\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -329,7 +862,20 @@
   },
   {
     "trigger": {
-      "url-filter": "quantserve\\.com"
+      "url-filter": "^https?://([^/]+\\.)?outbrain\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -337,7 +883,20 @@
   },
   {
     "trigger": {
-      "url-filter": "rayjump\\.com"
+      "url-filter": "^https?://([^/]+\\.)?pagead2\\.googlesyndication\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -345,7 +904,20 @@
   },
   {
     "trigger": {
-      "url-filter": "revcontent\\.com"
+      "url-filter": "^https?://([^/]+\\.)?popads\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -353,7 +925,20 @@
   },
   {
     "trigger": {
-      "url-filter": "sc-static\\.net"
+      "url-filter": "^https?://([^/]+\\.)?propellerads\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -361,7 +946,20 @@
   },
   {
     "trigger": {
-      "url-filter": "scorecardresearch\\.com"
+      "url-filter": "^https?://([^/]+\\.)?pubmatic\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -369,7 +967,20 @@
   },
   {
     "trigger": {
-      "url-filter": "segment\\.com"
+      "url-filter": "^https?://([^/]+\\.)?rayjump\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -377,7 +988,20 @@
   },
   {
     "trigger": {
-      "url-filter": "segment\\.io"
+      "url-filter": "^https?://([^/]+\\.)?revcontent\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -385,7 +1009,20 @@
   },
   {
     "trigger": {
-      "url-filter": "smartadserver\\.com"
+      "url-filter": "^https?://([^/]+\\.)?revjet\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -393,7 +1030,20 @@
   },
   {
     "trigger": {
-      "url-filter": "snap\\.licdn\\.com"
+      "url-filter": "^https?://([^/]+\\.)?rubiconproject\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -401,7 +1051,20 @@
   },
   {
     "trigger": {
-      "url-filter": "spclient\\.wg\\.spotify\\.com"
+      "url-filter": "^https?://([^/]+\\.)?serving-sys\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -409,7 +1072,20 @@
   },
   {
     "trigger": {
-      "url-filter": "static\\.ads-twitter\\.com"
+      "url-filter": "^https?://([^/]+\\.)?sharethrough\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -417,7 +1093,20 @@
   },
   {
     "trigger": {
-      "url-filter": "static\\.hotjar\\.com"
+      "url-filter": "^https?://([^/]+\\.)?sizmek\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -425,7 +1114,20 @@
   },
   {
     "trigger": {
-      "url-filter": "taboola\\.com"
+      "url-filter": "^https?://([^/]+\\.)?smadex\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -433,7 +1135,20 @@
   },
   {
     "trigger": {
-      "url-filter": "teads\\.tv"
+      "url-filter": "^https?://([^/]+\\.)?smartadserver\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -441,7 +1156,20 @@
   },
   {
     "trigger": {
-      "url-filter": "tr\\.snapchat\\.com"
+      "url-filter": "^https?://([^/]+\\.)?sovrn\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -449,7 +1177,20 @@
   },
   {
     "trigger": {
-      "url-filter": "tremorhub\\.com"
+      "url-filter": "^https?://([^/]+\\.)?spclient\\.wg\\.spotify\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -457,7 +1198,20 @@
   },
   {
     "trigger": {
-      "url-filter": "tritondigital\\.com"
+      "url-filter": "^https?://([^/]+\\.)?spotxchange\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
     },
     "action": {
       "type": "block"
@@ -465,7 +1219,1535 @@
   },
   {
     "trigger": {
-      "url-filter": "vungle\\.com"
+      "url-filter": "^https?://([^/]+\\.)?startapp\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?supersonicads\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?taboola\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?tapjoy\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?teads\\.tv",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?thetradedesk\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?tidaltv\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?tremorhub\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?tritondigital\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?turn\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?undertone\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?unityads\\.unity3d\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?vungle\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?yieldlab\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?yieldmo\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?zemanta\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?2o7\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?ads-twitter\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?ads\\.tiktok\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?adservice\\.google\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?agkn\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?amplitude\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?analytics\\.google\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?analytics\\.tiktok\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?analytics\\.twitter\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?analytics\\.yahoo\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?bat\\.bing\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?bluekai\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?clarity\\.ms",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?connect\\.facebook\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?crazyegg\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?crwdcntrl\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?ct\\.pinterest\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?demdex\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?everesttech\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?exelator\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?fullstory\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?geo\\.yahoo\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?google-analytics\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?googletagmanager\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?googletagservices\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?hotjar\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?inspectlet\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?krxd\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?liadm\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?licdn\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?logrocket\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?luckyorange\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?mixpanel\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?mouseflow\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?mxpnl\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?omtrdc\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?quantserve\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?rlcdn\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?sc-static\\.net",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?scorecardresearch\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?script\\.hotjar\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?segment\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?segment\\.io",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?smartlook\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?snap\\.licdn\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?statcounter\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?static\\.ads-twitter\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?static\\.hotjar\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?tapad\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?tr\\.snapchat\\.com",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ],
+      "load-type": [
+        "third-party"
+      ]
     },
     "action": {
       "type": "block"
@@ -477,7 +2759,7 @@
     },
     "action": {
       "type": "css-display-none",
-      "selector": ".ad, .ads, .advertisement, .ad-banner, .banner-ad, [id^='google_ads'], ins.adsbygoogle, .ad-container"
+      "selector": ".advertisement, .advertising, .ad-banner, .ad-container, .ad-slot, .adsbygoogle, [id^='google_ads'], [id^='div-gpt-ad'], .taboola, .outbrain, .sponsored-content, .sponsored-post, .native-ad"
     }
   }
 ]

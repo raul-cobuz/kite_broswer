@@ -11,6 +11,7 @@
 #include "history.h"
 #include "kite_pages.h"
 #include "permissions.h"
+#include "privacy.h"
 #include "settings.h"
 #include "url_utils.h"
 
@@ -28,6 +29,7 @@ static bool is_trackable_url(const gchar *uri) {
 static WebKitWebContext *get_incognito_context() {
     if (!incognito_context) {
         incognito_context = webkit_web_context_new_ephemeral();
+        privacy_apply_context(incognito_context);
         init_kite_pages(incognito_context);
         g_signal_connect(incognito_context, "download-started", G_CALLBACK(on_download_started), NULL);
     }
@@ -153,6 +155,8 @@ static void on_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_event,
         update_reload_button(web_view);
         update_progress(web_view);
         update_window_title(web_view);
+        if (web_view == get_active_webview())
+            update_privacy_button(web_view);
     }
 }
 

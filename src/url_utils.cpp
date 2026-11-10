@@ -3,6 +3,10 @@
 #include <arpa/inet.h>
 #include <glib.h>
 
+#include <vector>
+
+#include "settings.h"
+
 static bool starts_with(const std::string &text, const gchar *prefix) {
     return text.rfind(prefix, 0) == 0;
 }
@@ -89,6 +93,87 @@ std::string url_host(const std::string &url) {
     return result;
 }
 
+static bool is_tracking_param(const std::string &name) {
+    std::string lower;
+    lower.reserve(name.size());
+    for (guchar c : name)
+        lower.push_back((gchar)g_ascii_tolower(c));
+
+    if (lower.rfind("utm_", 0) == 0 || lower.rfind("hsa_", 0) == 0 || lower.rfind("mtm_", 0) == 0)
+        return true;
+
+    static const char *const names[] = {
+        "fbclid",       "gclid",         "dclid",        "gclsrc",       "wbraid",       "gbraid",
+        "gad_source",   "msclkid",       "mc_cid",       "mc_eid",       "mkt_tok",      "igshid",
+        "twclid",       "ttclid",        "yclid",        "srsltid",      "_hsenc",       "_hsmi",
+        "__hssc",       "__hstc",        "__hsfp",       "oly_anon_id",  "oly_enc_id",   "vero_id",
+        "vero_conv",    "wickedid",      "_ga",          "_gl",          "ref_src",      "ref_url",
+        "__twitter_impression",          "guccounter",   "guce_referrer", "guce_referrer_sig",
+        "spm",          "openstat",      "_openstat",    "pk_campaign",  "pk_kwd",       "pk_source",
+        "pk_medium",
+    };
+    for (const char *candidate : names) {
+        if (lower == candidate)
+            return true;
+    }
+    return false;
+}
+
+std::string strip_tracking_params(const std::string &url) {
+    if (!starts_with(url, "http://") && !starts_with(url, "https://"))
+        return url;
+
+    size_t query_pos = url.find('?');
+    if (query_pos == std::string::npos)
+        return url;
+
+    size_t fragment_pos = url.find('#', query_pos);
+    size_t query_end = fragment_pos == std::string::npos ? url.size() : fragment_pos;
+    std::string query = url.substr(query_pos + 1, query_end - query_pos - 1);
+    if (query.empty())
+        return url;
+
+    std::vector<std::string> kept;
+    bool removed = false;
+    size_t start = 0;
+    while (start <= query.size()) {
+        size_t amp = query.find('&', start);
+        size_t end = amp == std::string::npos ? query.size() : amp;
+        std::string pair = query.substr(start, end - start);
+        size_t equals = pair.find('=');
+        std::string name = equals == std::string::npos ? pair : pair.substr(0, equals);
+
+        gchar *decoded = g_uri_unescape_string(name.c_str(), nullptr);
+        std::string normalized = decoded ? decoded : name;
+        g_free(decoded);
+
+        if (is_tracking_param(normalized))
+            removed = true;
+        else
+            kept.push_back(pair);
+
+        if (amp == std::string::npos)
+            break;
+        start = amp + 1;
+    }
+
+    if (!removed)
+        return url;
+
+    std::string result = url.substr(0, query_pos);
+    if (!kept.empty()) {
+        result.push_back('?');
+        for (size_t i = 0; i < kept.size(); i++) {
+            if (i > 0)
+                result.push_back('&');
+            result += kept[i];
+        }
+    }
+    if (fragment_pos != std::string::npos)
+        result += url.substr(fragment_pos);
+    return result;
+}
+
 std::string resolve_url_input(const std::string &text) {
     if (starts_with(text, "!yt "))
         return "https://www.youtube.com/results?search_query=" + escape_query(text.substr(4));
@@ -99,5 +184,8 @@ std::string resolve_url_input(const std::string &text) {
     if (starts_with(text, "!r "))
         return "https://www.reddit.com/search/?q=" + escape_query(text.substr(3));
 
-    return normalize_url(text);
+    std::string resolved = normalize_url(text);
+    if (settings_strip_tracking_params())
+        resolved = strip_tracking_params(resolved);
+    return resolved;
 }

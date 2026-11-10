@@ -13,6 +13,7 @@ pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
 
 # Testable, UI-independent logic.
 add_library(kite_core STATIC
+    src/adblock_rules.cpp
     src/history.cpp
     src/session.cpp
     src/settings.cpp
@@ -31,7 +32,9 @@ set(KITE_UI_SOURCES
     src/find_bar.cpp
     src/kite_pages.cpp
     src/permissions.cpp
+    src/privacy.cpp
     src/tabs.cpp
+    src/tracking_protection.cpp
 )
 
 function(kite_add_browser target)
@@ -71,4 +74,16 @@ if(BUILD_TESTING)
     target_link_libraries(test_session PRIVATE kite_core)
     target_compile_options(test_session PRIVATE -Wall -Wextra)
     add_test(NAME session COMMAND test_session)
+
+    add_executable(test_adblock_rules tests/test_adblock_rules.cpp)
+    target_link_libraries(test_adblock_rules PRIVATE kite_core)
+    target_compile_options(test_adblock_rules PRIVATE -Wall -Wextra)
+    add_test(NAME adblock_rules COMMAND test_adblock_rules)
+
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME adblock_filters
+                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_filters.py)
+        set_tests_properties(adblock_filters PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+    endif()
 endif()

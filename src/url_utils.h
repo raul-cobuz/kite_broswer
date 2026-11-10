@@ -5,3 +5,4 @@
 std::string normalize_url(const std::string &text);
 std::string resolve_url_input(const std::string &text);
 std::string url_host(const std::string &url);
+std::string strip_tracking_params(const std::string &url);

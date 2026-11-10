@@ -8,11 +8,15 @@ static GKeyFile *settings = nullptr;
 static gchar *settings_file = nullptr;
 static GHashTable *permission_decisions = nullptr;
 static GHashTable *site_zoom_levels = nullptr;
+static GHashTable *adblock_exceptions = nullptr;
 static bool dark_mode = false;
 static gchar *homepage = nullptr;
 static gchar *download_directory = nullptr;
 static bool restore_session = true;
 static bool ask_download_directory = false;
+static bool block_ads = true;
+static bool strip_tracking_params = true;
+static bool clear_on_exit = false;
 
 static gchar *default_download_directory() {
     const gchar *special = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
@@ -38,11 +42,26 @@ static double clamp_zoom(double level) {
     return CLAMP(level, 0.25, 5.0);
 }
 
+static gchar *normalize_host(const gchar *host) {
+    if (!host)
+        return nullptr;
+    gchar *trimmed = g_strstrip(g_strdup(host));
+    gchar *lower = g_ascii_strdown(trimmed, -1);
+    g_free(trimmed);
+    if (!*lower) {
+        g_free(lower);
+        return nullptr;
+    }
+    return lower;
+}
+
 void load_settings() {
     if (permission_decisions)
         g_hash_table_destroy(permission_decisions);
     if (site_zoom_levels)
         g_hash_table_destroy(site_zoom_levels);
+    if (adblock_exceptions)
+        g_hash_table_destroy(adblock_exceptions);
     if (settings)
         g_key_file_free(settings);
     g_free(settings_file);
@@ -51,6 +70,7 @@ void load_settings() {
 
     permission_decisions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     site_zoom_levels = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    adblock_exceptions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     settings = g_key_file_new();
     settings_file = g_build_filename(g_get_user_config_dir(), "kite", "settings.ini", NULL);
     dark_mode = false;
@@ -58,6 +78,9 @@ void load_settings() {
     download_directory = default_download_directory();
     restore_session = true;
     ask_download_directory = false;
+    block_ads = true;
+    strip_tracking_params = true;
+    clear_on_exit = false;
 
     GError *error = nullptr;
     if (!g_key_file_load_from_file(settings, settings_file, G_KEY_FILE_NONE, &error)) {
@@ -109,6 +132,39 @@ void load_settings() {
         ask_download_directory = ask;
     }
 
+    gboolean ads = g_key_file_get_boolean(settings, "privacy", "block_ads", &error);
+    if (error) {
+        g_clear_error(&error);
+    } else {
+        block_ads = ads;
+    }
+
+    gboolean strip = g_key_file_get_boolean(settings, "privacy", "strip_tracking_params", &error);
+    if (error) {
+        g_clear_error(&error);
+    } else {
+        strip_tracking_params = strip;
+    }
+
+    gboolean clear_data = g_key_file_get_boolean(settings, "privacy", "clear_on_exit", &error);
+    if (error) {
+        g_clear_error(&error);
+    } else {
+        clear_on_exit = clear_data;
+    }
+
+    gchar *exceptions = g_key_file_get_string(settings, "privacy", "adblock_exceptions", nullptr);
+    if (exceptions) {
+        gchar **hosts = g_strsplit(exceptions, ";", -1);
+        for (gchar **p = hosts; *p; p++) {
+            gchar *host = normalize_host(*p);
+            if (host)
+                g_hash_table_add(adblock_exceptions, host);
+        }
+        g_strfreev(hosts);
+        g_free(exceptions);
+    }
+
     keys = g_key_file_get_keys(settings, "zoom", &n_keys, nullptr);
     if (keys) {
         for (gsize i = 0; i < n_keys; i++) {
@@ -133,6 +189,19 @@ void save_settings() {
     g_key_file_set_boolean(settings, "session", "restore", restore_session);
     g_key_file_set_string(settings, "downloads", "directory", settings_download_directory());
     g_key_file_set_boolean(settings, "downloads", "ask", ask_download_directory);
+
+    g_key_file_set_boolean(settings, "privacy", "block_ads", block_ads);
+    g_key_file_set_boolean(settings, "privacy", "strip_tracking_params", strip_tracking_params);
+    g_key_file_set_boolean(settings, "privacy", "clear_on_exit", clear_on_exit);
+
+    g_key_file_remove_key(settings, "privacy", "adblock_exceptions", nullptr);
+    if (adblock_exceptions && g_hash_table_size(adblock_exceptions) > 0) {
+        gchar **hosts = settings_adblock_exception_hosts();
+        gchar *joined = g_strjoinv(";", hosts);
+        g_key_file_set_string(settings, "privacy", "adblock_exceptions", joined);
+        g_free(joined);
+        g_strfreev(hosts);
+    }
 
     g_key_file_remove_group(settings, "permissions", nullptr);
 
@@ -276,4 +345,73 @@ void settings_clear_site_zoom(const gchar *host) {
     gchar *key = permission_key("zoom", host);
     g_hash_table_remove(site_zoom_levels, key);
     g_free(key);
+}
+
+bool settings_block_ads() {
+    return block_ads;
+}
+
+void settings_set_block_ads(bool enabled) {
+    block_ads = enabled;
+}
+
+bool settings_site_adblock_enabled(const gchar *host) {
+    if (!adblock_exceptions || !host || !*host)
+        return true;
+    gchar *normalized = normalize_host(host);
+    if (!normalized)
+        return true;
+    bool enabled = !g_hash_table_contains(adblock_exceptions, normalized);
+    g_free(normalized);
+    return enabled;
+}
+
+void settings_set_site_adblock_enabled(const gchar *host, bool enabled) {
+    if (!adblock_exceptions)
+        return;
+    gchar *normalized = normalize_host(host);
+    if (!normalized)
+        return;
+    if (enabled) {
+        g_hash_table_remove(adblock_exceptions, normalized);
+        g_free(normalized);
+    } else {
+        g_hash_table_add(adblock_exceptions, normalized);
+    }
+}
+
+static gint compare_hosts(gconstpointer a, gconstpointer b) {
+    const gchar *left = *(const gchar *const *)a;
+    const gchar *right = *(const gchar *const *)b;
+    return g_strcmp0(left, right);
+}
+
+gchar **settings_adblock_exception_hosts() {
+    GPtrArray *hosts = g_ptr_array_new_with_free_func(g_free);
+    if (adblock_exceptions) {
+        GHashTableIter iter;
+        gpointer key = nullptr;
+        g_hash_table_iter_init(&iter, adblock_exceptions);
+        while (g_hash_table_iter_next(&iter, &key, nullptr))
+            g_ptr_array_add(hosts, g_strdup((const gchar *)key));
+    }
+    g_ptr_array_sort(hosts, compare_hosts);
+    g_ptr_array_add(hosts, nullptr);
+    return (gchar **)g_ptr_array_free(hosts, FALSE);
+}
+
+bool settings_strip_tracking_params() {
+    return strip_tracking_params;
+}
+
+void settings_set_strip_tracking_params(bool enabled) {
+    strip_tracking_params = enabled;
+}
+
+bool settings_clear_on_exit() {
+    return clear_on_exit;
+}
+
+void settings_set_clear_on_exit(bool enabled) {
+    clear_on_exit = enabled;
 }

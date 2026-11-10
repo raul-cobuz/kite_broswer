@@ -91,6 +91,27 @@ int main() {
     expect_eq(url_host("not a url"), "", "invalid URL has no host");
     expect_eq(url_host(""), "", "empty URL has no host");
 
+    expect_eq(strip_tracking_params("https://x.test/a?utm_source=news&b=2&fbclid=abc#frag"),
+              "https://x.test/a?b=2#frag", "tracking params removed, fragment kept");
+    expect_eq(strip_tracking_params("https://x.test/a?utm_source=news"), "https://x.test/a",
+              "only tracking params drops query");
+    expect_eq(strip_tracking_params("https://x.test/a?b=2"), "https://x.test/a?b=2", "normal params kept");
+    expect_eq(strip_tracking_params("https://x.test/a#utm_source=news"), "https://x.test/a#utm_source=news",
+              "param in fragment untouched");
+    expect_eq(strip_tracking_params("file:///tmp/a?utm_source=news"), "file:///tmp/a?utm_source=news",
+              "non-http URLs untouched");
+    expect_eq(strip_tracking_params("https://x.test/a?UTM_Source=news&a=1"), "https://x.test/a?a=1",
+              "tracking names are case-insensitive");
+    expect_eq(strip_tracking_params("https://x.test/a?q=a%26b&gclid=1"), "https://x.test/a?q=a%26b",
+              "encoded values survive");
+    expect_eq(strip_tracking_params("https://x.test/a?utm_source=one&utm_medium=two"), "https://x.test/a",
+              "multiple tracking params removed");
+    expect_eq(strip_tracking_params("https://x.test/a?si=keepme"), "https://x.test/a?si=keepme",
+              "generic params kept");
+    expect_eq(resolve_url_input("https://x.test/?utm_source=news&q=1"), "https://x.test/?q=1",
+              "typed URL is cleaned");
+    expect_eq(resolve_url_input("x.test/path?fbclid=abc"), "https://x.test/path", "typed bare URL is cleaned");
+
     if (failures) {
         std::fprintf(stderr, "%d URL test(s) failed\n", failures);
         return 1;

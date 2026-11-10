@@ -26,3 +26,15 @@ void settings_set_ask_download_directory(bool ask);
 double settings_site_zoom(const gchar *host);
 void settings_set_site_zoom(const gchar *host, double level);
 void settings_clear_site_zoom(const gchar *host);
+
+bool settings_block_ads();
+void settings_set_block_ads(bool enabled);
+bool settings_site_adblock_enabled(const gchar *host);
+void settings_set_site_adblock_enabled(const gchar *host, bool enabled);
+gchar **settings_adblock_exception_hosts();
+
+bool settings_strip_tracking_params();
+void settings_set_strip_tracking_params(bool enabled);
+
+bool settings_clear_on_exit();
+void settings_set_clear_on_exit(bool enabled);

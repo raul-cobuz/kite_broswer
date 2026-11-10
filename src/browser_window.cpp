@@ -10,6 +10,7 @@
 #include "find_bar.h"
 #include "history.h"
 #include "kite_pages.h"
+#include "privacy.h"
 #include "session.h"
 #include "settings.h"
 #include "tabs.h"
@@ -41,6 +42,30 @@ gboolean webview_is_incognito(WebKitWebView *web_view) {
     return GPOINTER_TO_INT(g_object_get_data(G_OBJECT(web_view), "is_incognito"));
 }
 
+static void update_url_entry_icon(const gchar *uri) {
+    if (!browser.url_entry)
+        return;
+
+    const gchar *icon = nullptr;
+    const gchar *tooltip = nullptr;
+    if (uri && g_str_has_prefix(uri, "https://")) {
+        icon = "channel-secure-symbolic";
+        tooltip = "Secure connection";
+    } else if (uri && g_str_has_prefix(uri, "http://")) {
+        icon = "channel-insecure-symbolic";
+        tooltip = "Connection is not secure";
+    } else if (uri && g_str_has_prefix(uri, "file://")) {
+        icon = "text-x-generic-symbolic";
+        tooltip = "Local file";
+    } else if (uri && g_str_has_prefix(uri, "kite://")) {
+        icon = "applications-internet-symbolic";
+        tooltip = "Kite page";
+    }
+
+    gtk_entry_set_icon_from_icon_name(GTK_ENTRY(browser.url_entry), GTK_ENTRY_ICON_PRIMARY, icon);
+    gtk_entry_set_icon_tooltip_text(GTK_ENTRY(browser.url_entry), GTK_ENTRY_ICON_PRIMARY, tooltip);
+}
+
 void set_url_entry_text(const gchar *text) {
     if (!browser.url_entry)
         return;
@@ -51,6 +76,7 @@ void set_url_entry_text(const gchar *text) {
     gtk_entry_set_text(GTK_ENTRY(browser.url_entry), display ? display : "");
     browser.updating_url_entry = false;
     browser.url_entry_user_edited = false;
+    update_url_entry_icon(text);
     clear_omnibox_completions();
 }
 
@@ -86,6 +112,13 @@ void update_bookmark_button(WebKitWebView *web_view) {
         gtk_widget_set_tooltip_text(browser.btn_bookmark, "Bookmark this page (Ctrl+D)");
 }
 
+static bool is_startup_newtab(WebKitWebView *web_view) {
+    if (!web_view || !g_object_get_data(G_OBJECT(web_view), "kite_startup_tab"))
+        return false;
+    const gchar *uri = webkit_web_view_get_uri(web_view);
+    return uri && g_str_has_prefix(uri, KITE_NEWTAB_URL);
+}
+
 void save_browser_session() {
     if (!browser.notebook || browser.restoring_session)
         return;
@@ -100,6 +133,10 @@ void save_browser_session() {
             continue;
         WebKitWebView *web_view = WEBKIT_WEB_VIEW(child);
         if (webview_is_incognito(web_view))
+            continue;
+        // The fresh start page opened at launch is not part of the restored
+        // session; otherwise every launch would accumulate another blank tab.
+        if (is_startup_newtab(web_view))
             continue;
 
         if (i == current)
@@ -353,6 +390,7 @@ static void on_tab_switched(GtkNotebook *nb, GtkWidget *page, guint page_num, gp
     update_progress(web_view);
     update_window_title(web_view);
     update_bookmark_button(web_view);
+    update_privacy_button(web_view);
     sync_find_bar(web_view);
     save_browser_session();
 }
@@ -481,6 +519,9 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
 
 void create_browser_window() {
     browser.main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_style_context_add_class(gtk_widget_get_style_context(browser.main_window), "kite-window");
+    if (settings_dark_mode())
+        gtk_style_context_add_class(gtk_widget_get_style_context(browser.main_window), "kite-dark");
     g_signal_connect(browser.main_window, "key-press-event", G_CALLBACK(on_key_press), NULL);
     g_signal_connect(browser.main_window, "delete-event", G_CALLBACK(on_window_delete), NULL);
     gtk_window_set_default_size(GTK_WINDOW(browser.main_window), 1200, 800);
@@ -491,7 +532,8 @@ void create_browser_window() {
     gtk_container_add(GTK_CONTAINER(browser.main_window), vbox);
 
     GtkWidget *toolbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    gtk_box_pack_start(GTK_BOX(vbox), toolbar, FALSE, FALSE, 4);
+    gtk_style_context_add_class(gtk_widget_get_style_context(toolbar), "kite-toolbar");
+    gtk_box_pack_start(GTK_BOX(vbox), toolbar, FALSE, FALSE, 0);
 
     GtkWidget *btn_back = gtk_button_new_from_icon_name("go-previous-symbolic", GTK_ICON_SIZE_BUTTON);
     GtkWidget *btn_forward = gtk_button_new_from_icon_name("go-next-symbolic", GTK_ICON_SIZE_BUTTON);
@@ -529,11 +571,16 @@ void create_browser_window() {
     gtk_box_pack_start(GTK_BOX(toolbar), browser.btn_bookmark, FALSE, FALSE, 0);
 
     browser.url_entry = gtk_entry_new();
-    gtk_entry_set_placeholder_text(GTK_ENTRY(browser.url_entry), "Search with DuckDuckGo or enter address");
+    gtk_style_context_add_class(gtk_widget_get_style_context(browser.url_entry), "kite-omnibox");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(browser.url_entry), "Search with DuckDuckGo or type a URL");
     gtk_box_pack_start(GTK_BOX(toolbar), browser.url_entry, TRUE, TRUE, 2);
     g_signal_connect(browser.url_entry, "activate", G_CALLBACK(on_url_activate), NULL);
     g_signal_connect(browser.url_entry, "changed", G_CALLBACK(on_url_entry_changed), NULL);
     setup_omnibox_completion();
+
+    GtkWidget *btn_privacy = create_privacy_button();
+    if (btn_privacy)
+        gtk_box_pack_start(GTK_BOX(toolbar), btn_privacy, FALSE, FALSE, 0);
 
     GtkWidget *btn_downloads = create_downloads_button();
     if (btn_downloads)
@@ -541,11 +588,13 @@ void create_browser_window() {
     gtk_box_pack_start(GTK_BOX(toolbar), browser.btn_dark, FALSE, FALSE, 0);
 
     browser.progress_bar = gtk_progress_bar_new();
+    gtk_style_context_add_class(gtk_widget_get_style_context(browser.progress_bar), "kite-progress");
     gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(browser.progress_bar), FALSE);
-    gtk_widget_set_size_request(browser.progress_bar, -1, 4);
+    gtk_widget_set_size_request(browser.progress_bar, -1, 3);
     gtk_box_pack_start(GTK_BOX(vbox), browser.progress_bar, FALSE, FALSE, 0);
 
     browser.notebook = gtk_notebook_new();
+    gtk_style_context_add_class(gtk_widget_get_style_context(browser.notebook), "kite-notebook");
     gtk_notebook_set_scrollable(GTK_NOTEBOOK(browser.notebook), TRUE);
     gtk_box_pack_start(GTK_BOX(vbox), browser.notebook, TRUE, TRUE, 0);
     g_signal_connect(browser.notebook, "switch-page", G_CALLBACK(on_tab_switched), NULL);
@@ -556,15 +605,25 @@ void create_browser_window() {
 
     browser.restoring_session = true;
     SessionState saved;
-    if (settings_restore_session() && session_load(&saved)) {
+    bool restored = settings_restore_session() && session_load(&saved);
+    if (restored) {
         for (const auto &url : saved.urls)
             create_new_tab(url.c_str());
-        gint n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(browser.notebook));
-        if (n_pages > 0)
-            gtk_notebook_set_current_page(GTK_NOTEBOOK(browser.notebook),
-                                          CLAMP(saved.active_index, 0, n_pages - 1));
-    } else {
-        create_new_tab(KITE_NEWTAB_URL);
+    }
+
+    // Always open the Kite start page. When a session was restored it becomes
+    // the first, active tab, so the browser opens with a proper start page
+    // instead of dropping straight into the last visited site.
+    create_new_tab(KITE_NEWTAB_URL);
+    WebKitWebView *start_view = get_active_webview();
+    if (start_view) {
+        g_object_set_data(G_OBJECT(start_view), "kite_startup_tab", GINT_TO_POINTER(1));
+        if (restored) {
+            gint start_page = gtk_notebook_page_num(GTK_NOTEBOOK(browser.notebook), GTK_WIDGET(start_view));
+            if (start_page > 0)
+                gtk_notebook_reorder_child(GTK_NOTEBOOK(browser.notebook), GTK_WIDGET(start_view), 0);
+            gtk_notebook_set_current_page(GTK_NOTEBOOK(browser.notebook), 0);
+        }
     }
     browser.restoring_session = false;
 

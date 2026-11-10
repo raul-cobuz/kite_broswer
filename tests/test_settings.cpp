@@ -40,6 +40,10 @@ int main() {
     check(settings_download_directory() && *settings_download_directory(), "download directory has a default");
     check(!settings_ask_download_directory(), "download destination defaults to automatic");
     check(settings_site_zoom("example.com") == 1.0, "site zoom defaults to 100%");
+    check(settings_block_ads(), "ad blocking defaults to on");
+    check(settings_strip_tracking_params(), "tracking parameter removal defaults to on");
+    check(!settings_clear_on_exit(), "clear on exit defaults to off");
+    check(settings_site_adblock_enabled("example.com"), "site ad blocking defaults to on");
 
     settings_set_dark_mode(true);
     remember_permission_decision("media", "example.com", TRUE);
@@ -71,6 +75,24 @@ int main() {
     settings_set_site_zoom("example.com", 1.25);
     settings_set_site_zoom("a_b.test", 2.0);
     check(settings_site_zoom("example.com") == 1.25, "site zoom in memory");
+
+    settings_set_block_ads(false);
+    settings_set_strip_tracking_params(false);
+    settings_set_clear_on_exit(true);
+    settings_set_site_adblock_enabled("Example.COM", false);
+    settings_set_site_adblock_enabled("news.test", false);
+    check(!settings_block_ads(), "ad blocking disabled in memory");
+    check(!settings_strip_tracking_params(), "tracking removal disabled in memory");
+    check(settings_clear_on_exit(), "clear on exit enabled in memory");
+    check(!settings_site_adblock_enabled("example.com"), "host exception disables site blocking");
+    check(!settings_site_adblock_enabled("EXAMPLE.com"), "host exception lookup is case-insensitive");
+    check(settings_site_adblock_enabled("other.test"), "other sites keep blocking");
+    gchar **exceptions = settings_adblock_exception_hosts();
+    check(g_strv_length(exceptions) == 2, "two ad-block exceptions listed");
+    expect_str(exceptions[0], "example.com", "exceptions are normalized and sorted");
+    expect_str(exceptions[1], "news.test", "second exception listed");
+    g_strfreev(exceptions);
+
     save_settings();
 
     gchar *settings_path = g_build_filename(tmp, "kite", "settings.ini", NULL);
@@ -96,6 +118,13 @@ int main() {
     expect_str(value, "/tmp/kite-downloads", "download directory persisted");
     g_free(value);
     check(g_key_file_get_boolean(file, "downloads", "ask", nullptr), "ask flag persisted");
+    check(!g_key_file_get_boolean(file, "privacy", "block_ads", nullptr), "ad blocking persisted");
+    check(!g_key_file_get_boolean(file, "privacy", "strip_tracking_params", nullptr),
+          "tracking removal persisted");
+    check(g_key_file_get_boolean(file, "privacy", "clear_on_exit", nullptr), "clear on exit persisted");
+    value = g_key_file_get_string(file, "privacy", "adblock_exceptions", nullptr);
+    expect_str(value, "example.com;news.test", "ad-block exceptions persisted");
+    g_free(value);
     check(g_key_file_get_double(file, "zoom", "zoom|example.com", nullptr) == 1.25, "site zoom persisted");
     check(g_key_file_get_double(file, "zoom", "zoom|a_5Fb.test", nullptr) == 2.0,
           "site zoom key escapes host");
@@ -112,6 +141,26 @@ int main() {
     check(settings_ask_download_directory(), "ask flag restored");
     check(settings_site_zoom("example.com") == 1.25, "site zoom restored");
     check(settings_site_zoom("a_b.test") == 2.0, "escaped site zoom restored");
+    check(!settings_block_ads(), "ad blocking restored");
+    check(!settings_strip_tracking_params(), "tracking removal restored");
+    check(settings_clear_on_exit(), "clear on exit restored");
+    check(!settings_site_adblock_enabled("example.com"), "ad-block exception restored");
+    exceptions = settings_adblock_exception_hosts();
+    check(g_strv_length(exceptions) == 2, "restored exception count");
+    g_strfreev(exceptions);
+
+    settings_set_site_adblock_enabled("example.com", true);
+    settings_set_site_adblock_enabled("news.test", true);
+    save_settings();
+    load_settings();
+    exceptions = settings_adblock_exception_hosts();
+    check(g_strv_length(exceptions) == 0, "enabling sites clears exceptions");
+    g_strfreev(exceptions);
+    file = g_key_file_new();
+    g_key_file_load_from_file(file, settings_path, G_KEY_FILE_NONE, nullptr);
+    check(!g_key_file_has_key(file, "privacy", "adblock_exceptions", nullptr),
+          "empty exception list removes key");
+    g_key_file_free(file);
 
     settings_clear_site_zoom("example.com");
     save_settings();

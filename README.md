@@ -49,14 +49,14 @@ make run
 - Tabbed browsing with incognito tabs that share one ephemeral session
 - Permission prompts (camera/microphone, location, notifications, clipboard, and more) with optional per-site memory
 - Friendly error pages for network failures, TLS certificate errors, and renderer crashes
-- Persistent dark mode
+- Persistent dark mode that recolors page colors while preserving hue instead of inverting them
 - Find bar with match count and per-tab search state
 - Omnibox normalization: `localhost`/IP addresses use `http://`, domains use `https://`, absolute paths open as `file://`, everything else searches DuckDuckGo
 - Omnibox completion from history and bookmarks
 - SQLite history and bookmarks with `kite://history` and `kite://bookmarks` pages
 - Bookmark star in the toolbar and Ctrl+D; Ctrl+H opens history in a new tab
 - Session restore on startup and recently closed tabs (Ctrl+Shift+T)
-- `kite://newtab` start page with recent history and bookmarks (regular tabs only)
+- Browser-style `kite://newtab` start page with search, shortcut tiles, recent history, and bookmarks (regular tabs only)
 - Downloads manager with progress, cancel, open, and clear-finished actions
 - Per-site zoom that survives reloads and restarts
 - Ad-blocking via WebKit content blockers
@@ -87,7 +87,7 @@ zoom|example.com=1.2
 ```
 
 - `homepage` is used by the Home button (default `kite://newtab`).
-- `restore` restores the previous session on startup.
+- `restore` restores the previous session on startup alongside a fresh start page, which opens first and stays active.
 - `directory` is the default download folder; `ask=true` shows a file chooser for every download.
 - `[zoom]` stores per-host zoom levels, written automatically by Ctrl++ / Ctrl+-.
 - `[permissions]` is written from the permission prompts; delete keys to ask again.
