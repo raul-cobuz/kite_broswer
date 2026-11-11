@@ -28,7 +28,8 @@ def main():
     assert isinstance(rules, list)
 
     block_rules = [rule for rule in rules if rule["action"]["type"] == "block"]
-    assert len(block_rules) == 3, "duplicate domains must be deduplicated"
+    assert len(block_rules) == 3 + len(update_filters.AD_URL_FILTERS), \
+        "duplicate domains must be deduplicated, special rules added once"
 
     ad_rule = find_block_rule(rules, r"ads\.test")
     assert ad_rule["trigger"]["url-filter"] == r"^https?://([^/]+\.)?ads\.test"
@@ -62,9 +63,13 @@ def main():
     tracker_rule = find_block_rule(rules, r"track\.test")
     assert tracker_rule["trigger"]["load-type"] == ["third-party"]
 
+    youtube_rule = find_block_rule(rules, r"youtube\.com/api/stats/ads")
+    assert youtube_rule["trigger"]["resource-type"] == update_filters.BLOCKED_RESOURCE_TYPES
+
     cosmetic_rules = [rule for rule in rules if rule["action"]["type"] == "css-display-none"]
     assert len(cosmetic_rules) == 1
     assert ".adsbygoogle" in cosmetic_rules[0]["action"]["selector"]
+    assert ".ytp-ad-module" in cosmetic_rules[0]["action"]["selector"]
 
     allow_rules = [rule for rule in rules if rule["action"]["type"] == "ignore-previous-rules"]
     assert len(allow_rules) == 1

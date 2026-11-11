@@ -14,6 +14,12 @@
 //      keeps hues instead of blindly inverting the page, so photos, logos and
 //      brand colors stay recognizable.
 //
+// Google Search is handled separately: its result cards use gradients,
+// pseudo-elements and partially dark native themes that the DOM transformer
+// cannot recolor reliably. Google therefore keeps its native dark theme when
+// it is really active, and otherwise gets a full-surface inversion (with
+// images re-inverted) that keeps every card legible.
+//
 // The same script is injected into every frame at document-start and can also
 // be evaluated on already-loaded pages when the toolbar toggle is used.
 
@@ -30,6 +36,7 @@ static const char *DARK_MODE_JS = R"JS(
   }
 
   var STYLE_ID = 'kite-dark-mode-style';
+  var googleMode = /(^|\.)google\.[a-z.]+$/i.test(location.hostname || '');
   var originalMatchMedia = window.matchMedia ? window.matchMedia.bind(window) : null;
   var originalInline = new WeakMap();
   var trackedElements = new Set();
@@ -52,7 +59,7 @@ static const char *DARK_MODE_JS = R"JS(
   }
 
   function patchedMatchMedia(query) {
-    if (!enabled || !originalMatchMedia)
+    if (!enabled || !originalMatchMedia || googleMode)
       return originalMatchMedia ? originalMatchMedia(query) : mediaList(query, false);
     var text = String(query || '');
     if (/prefers-color-scheme\s*:\s*dark/i.test(text)) return mediaList(query, true);
@@ -194,6 +201,18 @@ static const char *DARK_MODE_JS = R"JS(
     var background = darkBackground(parseColor(style.backgroundColor));
     if (background) apply(element, 'background-color', background);
 
+    // background-color alone leaves light gradients (cards, hero banners)
+    // untouched while text becomes light. Layer a dark wash over gradients,
+    // but not over gradient text, which would erase the glyphs.
+    var backgroundImage = style.backgroundImage;
+    var backgroundClip = style.backgroundClip || style.webkitBackgroundClip || '';
+    if (backgroundImage && backgroundImage !== 'none' && /gradient\(/i.test(backgroundImage) &&
+        !/text/i.test(backgroundClip) &&
+        backgroundImage.indexOf('rgba(16, 17, 20, 0.88)') !== 0) {
+      apply(element, 'background-image',
+            'linear-gradient(rgba(16, 17, 20, 0.88), rgba(16, 17, 20, 0.88)), ' + backgroundImage);
+    }
+
     var foreground = lightForeground(parseColor(style.color));
     if (foreground) apply(element, 'color', foreground);
 
@@ -254,17 +273,22 @@ static const char *DARK_MODE_JS = R"JS(
     else window.setTimeout(run, 0);
   }
 
-  function pageIsDark() {
-    var roots = [document.documentElement, document.body];
+  // Check body first: a dark html backdrop with a light body is still a light
+  // page, and treating it as dark leaves light text on the body's white cards.
+  function pageLuminance() {
+    var roots = [document.body, document.documentElement];
     for (var i = 0; i < roots.length; i++) {
       if (!roots[i]) continue;
       var color = parseColor(getComputedStyle(roots[i]).backgroundColor);
-      if (color && color.a >= 0.5) {
-        var luminance = 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
-        if (luminance < 70) return true;
-      }
+      if (color && color.a >= 0.5)
+        return 0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b;
     }
-    return false;
+    return null;
+  }
+
+  function pageIsDark() {
+    var luminance = pageLuminance();
+    return luminance !== null && luminance < 70;
   }
 
   function installStyle(alreadyDark) {
@@ -287,8 +311,40 @@ static const char *DARK_MODE_JS = R"JS(
     style.textContent = css;
   }
 
+  // Google renders many surfaces with gradients and pseudo-elements, which
+  // inline background-color overrides cannot reach. Inverting the whole
+  // surface handles those consistently; media is inverted a second time so
+  // images and the logo keep their real colors.
+  function installGoogleFilterStyle() {
+    var css =
+      'html{filter:invert(1) hue-rotate(180deg)!important;background-color:#fff!important}' +
+      'img,video,canvas{filter:invert(1) hue-rotate(180deg)!important}' +
+      '::selection{background:#3b5bdb!important;color:#ffffff!important}';
+    var style = document.getElementById(STYLE_ID);
+    if (!style) {
+      style = document.createElement('style');
+      style.id = STYLE_ID;
+      (document.head || document.documentElement).appendChild(style);
+    }
+    style.textContent = css;
+  }
+
   function start() {
     if (!enabled || !document.documentElement) return;
+
+    if (googleMode) {
+      var luminance = pageLuminance();
+      var schemeDark = originalMatchMedia &&
+                       originalMatchMedia('(prefers-color-scheme: dark)').matches;
+      var nativeDark = luminance !== null ? luminance < 70 : schemeDark;
+      if (nativeDark)
+        installStyle(true);
+      else
+        installGoogleFilterStyle();
+      document.documentElement.setAttribute('data-kite-dark', 'true');
+      return;
+    }
+
     var alreadyDark = pageIsDark();
     installStyle(alreadyDark);
     document.documentElement.setAttribute('data-kite-dark', 'true');

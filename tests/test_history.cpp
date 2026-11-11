@@ -85,6 +85,32 @@ int main() {
     entries = history_completions("example title", 10);
     check(find_entry(entries, "https://example.com/a") != nullptr, "completion includes bookmarks");
 
+    check(pinned_links_list().empty(), "new pinned list is empty");
+    check(pinned_links_count() == 0, "pinned count starts at zero");
+    for (int i = 1; i <= KITE_MAX_PINNED_LINKS; i++) {
+        gchar *url = g_strdup_printf("https://pin%d.test/", i);
+        gchar *title = g_strdup_printf("Pin %d", i);
+        check(pinned_link_add(url, title), "pinned link added");
+        g_free(url);
+        g_free(title);
+    }
+    check(pinned_links_count() == KITE_MAX_PINNED_LINKS, "pinned count reaches the limit");
+    check(!pinned_link_add("https://pin-overflow.test/", "Overflow"), "sixth pinned link rejected");
+    std::vector<PinnedLink> pins = pinned_links_list();
+    check(pins.size() == (size_t)KITE_MAX_PINNED_LINKS, "pinned list respects the limit");
+    if (!pins.empty()) {
+        check(pins.front().url == "https://pin1.test/", "pinned links keep insertion order");
+        check(pins.front().title == "Pin 1", "pinned title stored");
+    }
+    check(pinned_link_add("https://pin1.test/", "Pin One Updated"), "existing pinned link updates");
+    pins = pinned_links_list();
+    check(pins.size() == (size_t)KITE_MAX_PINNED_LINKS, "updating does not add another pin");
+    if (!pins.empty())
+        check(pins.front().title == "Pin One Updated", "pinned title updated");
+    check(pinned_link_remove("https://pin2.test/"), "pinned link removed");
+    check(pinned_links_count() == KITE_MAX_PINNED_LINKS - 1, "pinned count drops after removal");
+    check(pinned_link_add("https://pin-overflow.test/", "Overflow"), "freed slot can be reused");
+
     history_delete_url("https://other.test/page");
     entries = history_recent(10);
     check(entries.size() == 1, "single URL forgotten");
@@ -93,6 +119,7 @@ int main() {
     history_clear();
     check(history_recent(10).empty(), "history cleared");
     check(bookmark_exists("https://example.com/a"), "clearing history keeps bookmarks");
+    check(pinned_links_count() == KITE_MAX_PINNED_LINKS, "clearing history keeps pinned links");
 
     history_record_visit("https://persisted.test/", "Persisted");
     check(bookmark_add("https://saved.test/", "Saved"), "second bookmark added");
@@ -103,6 +130,7 @@ int main() {
     check(find_entry(entries, "https://persisted.test/") != nullptr, "history survives reopen");
     check(bookmark_exists("https://saved.test/"), "bookmark survives reopen");
     check(bookmark_exists("https://example.com/a"), "bookmark kept for bookmarked URL");
+    check(pinned_links_count() == KITE_MAX_PINNED_LINKS, "pinned links survive reopen");
     history_close();
 
     g_remove(db_path);

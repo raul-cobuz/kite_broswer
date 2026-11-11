@@ -9,6 +9,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0)
 pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 pkg_check_modules(WEBKIT2 REQUIRED IMPORTED_TARGET webkit2gtk-4.1)
+pkg_check_modules(JSC REQUIRED IMPORTED_TARGET javascriptcoregtk-4.1)
 pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
 
 # Testable, UI-independent logic.
@@ -29,17 +30,19 @@ set(KITE_UI_SOURCES
     src/dark_mode.cpp
     src/downloads.cpp
     src/errors.cpp
+    src/extensions.cpp
     src/find_bar.cpp
     src/kite_pages.cpp
     src/permissions.cpp
     src/privacy.cpp
     src/tabs.cpp
     src/tracking_protection.cpp
+    src/youtube_adblock.cpp
 )
 
 function(kite_add_browser target)
     add_executable(${target} src/main.cpp ${KITE_UI_SOURCES})
-    target_link_libraries(${target} PRIVATE kite_core PkgConfig::GTK3 PkgConfig::WEBKIT2)
+    target_link_libraries(${target} PRIVATE kite_core PkgConfig::GTK3 PkgConfig::WEBKIT2 PkgConfig::JSC)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wno-unused-parameter)
     set_target_properties(${target} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"

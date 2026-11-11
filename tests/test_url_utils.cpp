@@ -23,9 +23,9 @@ static void expect_true(bool condition, const char *label) {
     }
 }
 
-static std::string duckduckgo_for(const std::string &text) {
+static std::string google_for(const std::string &text) {
     gchar *escaped = g_uri_escape_string(text.c_str(), NULL, TRUE);
-    std::string url = std::string("https://duckduckgo.com/?q=") + escaped;
+    std::string url = std::string("https://www.google.com/search?q=") + escaped;
     g_free(escaped);
     return url;
 }
@@ -51,9 +51,9 @@ int main() {
 
     expect_eq(normalize_url("example.com"), "https://example.com", "domain");
     expect_eq(normalize_url("example.com/path?q=1"), "https://example.com/path?q=1", "domain with path");
-    expect_eq(normalize_url("hello world"), duckduckgo_for("hello world"), "spaces search");
-    expect_eq(normalize_url("hello"), duckduckgo_for("hello"), "plain word search");
-    expect_eq(normalize_url("::1"), duckduckgo_for("::1"), "unbracketed IPv6 searches");
+    expect_eq(normalize_url("hello world"), google_for("hello world"), "spaces search");
+    expect_eq(normalize_url("hello"), google_for("hello"), "plain word search");
+    expect_eq(normalize_url("::1"), google_for("::1"), "unbracketed IPv6 searches");
 
     GError *error = nullptr;
     gchar *path = nullptr;
@@ -74,7 +74,7 @@ int main() {
     g_free(path);
 
     const std::string missing = "/definitely/not/a/real/kite/file";
-    expect_eq(normalize_url(missing), duckduckgo_for(missing), "missing absolute path searches");
+    expect_eq(normalize_url(missing), google_for(missing), "missing absolute path searches");
 
     expect_eq(resolve_url_input("!yt kitten videos"), "https://www.youtube.com/results?search_query=kitten%20videos",
               "YouTube bang");

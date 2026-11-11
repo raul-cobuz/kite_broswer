@@ -37,7 +37,7 @@ static std::string escape_query(const std::string &text) {
 }
 
 static std::string search_url(const std::string &text) {
-    return "https://duckduckgo.com/?q=" + escape_query(text);
+    return "https://www.google.com/search?q=" + escape_query(text);
 }
 
 std::string normalize_url(const std::string &text) {

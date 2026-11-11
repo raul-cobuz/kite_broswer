@@ -93,45 +93,6 @@ static gchar *download_suggested_filename(WebKitDownload *download) {
     return name;
 }
 
-static gchar *unique_download_path(const gchar *directory, const gchar *filename) {
-    gchar *candidate = g_build_filename(directory, filename, NULL);
-    if (!g_file_test(candidate, G_FILE_TEST_EXISTS))
-        return candidate;
-
-    gchar *base = g_path_get_basename(filename);
-    const gchar *dot = strrchr(base, '.');
-    gchar *stem = nullptr;
-    gchar *extension = nullptr;
-    if (dot && dot != base) {
-        stem = g_strndup(base, (gsize)(dot - base));
-        extension = g_strdup(dot);
-    } else {
-        stem = g_strdup(base);
-        extension = g_strdup("");
-    }
-
-    for (int i = 1; i < 1000; i++) {
-        g_free(candidate);
-        gchar *numbered = g_strdup_printf("%s (%d)%s", stem, i, extension);
-        candidate = g_build_filename(directory, numbered, NULL);
-        g_free(numbered);
-        if (!g_file_test(candidate, G_FILE_TEST_EXISTS))
-            break;
-    }
-
-    if (g_file_test(candidate, G_FILE_TEST_EXISTS)) {
-        g_free(candidate);
-        gchar *numbered = g_strdup_printf("%s-%" G_GINT64_FORMAT "%s", stem, g_get_real_time(), extension);
-        candidate = g_build_filename(directory, numbered, NULL);
-        g_free(numbered);
-    }
-
-    g_free(base);
-    g_free(stem);
-    g_free(extension);
-    return candidate;
-}
-
 static void on_open_clicked(GtkButton *button, gpointer user_data) {
     DownloadItem *item = (DownloadItem *)user_data;
     const gchar *destination = item->destination;
@@ -198,6 +159,7 @@ static void on_download_finished(WebKitDownload *download, gpointer user_data) {
 }
 
 static void on_download_failed(WebKitDownload *download, GError *error, gpointer user_data) {
+    g_printerr("[Kite DEBUG] download-failed download=%p error=%s\n", (void *)download, error ? error->message : "(null)");
     DownloadItem *item = (DownloadItem *)user_data;
     if (!item)
         return;
@@ -271,6 +233,7 @@ static DownloadItem *create_download_row(WebKitDownload *download, const gchar *
 
 static gboolean on_decide_destination(WebKitDownload *download, const gchar *suggested_filename,
                                       gpointer user_data) {
+    g_printerr("[Kite DEBUG] decide-destination fired download=%p suggested=%s\n", (void *)download, suggested_filename ? suggested_filename : "(null)");
     DownloadItem *item = (DownloadItem *)user_data;
     const gchar *filename = suggested_filename && *suggested_filename ? suggested_filename : nullptr;
     if (!filename && item)
@@ -287,64 +250,40 @@ static gboolean on_decide_destination(WebKitDownload *download, const gchar *sug
         gtk_label_set_text(GTK_LABEL(item->name_label), filename);
     }
 
-    if (settings_ask_download_directory()) {
-        GtkWidget *dialog = gtk_file_chooser_dialog_new(
-            "Save file", browser.main_window ? GTK_WINDOW(browser.main_window) : nullptr,
-            GTK_FILE_CHOOSER_ACTION_SAVE, "_Cancel", GTK_RESPONSE_CANCEL, "_Save", GTK_RESPONSE_ACCEPT, NULL);
-        gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
-        gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), filename);
-        const gchar *directory = settings_download_directory();
-        if (directory && *directory && g_file_test(directory, G_FILE_TEST_IS_DIR))
-            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), directory);
-
-        if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-            gchar *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-            gchar *uri = path ? g_filename_to_uri(path, nullptr, nullptr) : nullptr;
-            if (uri)
-                webkit_download_set_destination(download, uri);
-            else
-                webkit_download_cancel(download);
-            if (item && path) {
-                g_free(item->destination);
-                item->destination = g_strdup(path);
-            }
-            g_free(uri);
-            g_free(path);
-        } else {
-            webkit_download_cancel(download);
-        }
-        gtk_widget_destroy(dialog);
-        g_free(safe_filename);
-        return TRUE;
-    }
-
+    // Every download asks for a destination. The configured download
+    // directory is only the folder the chooser starts in.
+    GtkWidget *dialog = gtk_file_chooser_dialog_new(
+        "Save file", browser.main_window ? GTK_WINDOW(browser.main_window) : nullptr,
+        GTK_FILE_CHOOSER_ACTION_SAVE, "_Cancel", GTK_RESPONSE_CANCEL, "_Save", GTK_RESPONSE_ACCEPT, NULL);
+    gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
+    gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), filename);
     const gchar *directory = settings_download_directory();
-    if (!directory || !*directory) {
-        webkit_download_cancel(download);
-        g_free(safe_filename);
-        return TRUE;
-    }
+    if (directory && *directory && g_file_test(directory, G_FILE_TEST_IS_DIR))
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), directory);
 
-    g_mkdir_with_parents(directory, 0755);
-    gchar *path = unique_download_path(directory, filename);
-    gchar *uri = g_filename_to_uri(path, nullptr, nullptr);
-    if (!uri) {
-        g_printerr("[Kite] Could not set download destination: %s\n", directory);
-        webkit_download_cancel(download);
-    } else {
-        webkit_download_set_destination(download, uri);
-        if (item) {
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        gchar *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        gchar *uri = path ? g_filename_to_uri(path, nullptr, nullptr) : nullptr;
+        if (uri)
+            webkit_download_set_destination(download, uri);
+        else
+            webkit_download_cancel(download);
+        if (item && path) {
             g_free(item->destination);
             item->destination = g_strdup(path);
         }
+        g_free(uri);
+        g_free(path);
+    } else {
+        webkit_download_cancel(download);
     }
-    g_free(uri);
-    g_free(path);
+    gtk_widget_destroy(dialog);
     g_free(safe_filename);
     return TRUE;
 }
 
 void on_download_started(WebKitWebContext *context, WebKitDownload *download, gpointer user_data) {
+    g_printerr("[Kite DEBUG] download-started fired context=%p download=%p\n", (void *)context, (void *)download);
     if (!download)
         return;
 
@@ -421,5 +360,6 @@ GtkWidget *create_downloads_button() {
 
 void init_downloads() {
     WebKitWebContext *context = webkit_web_context_get_default();
+    g_printerr("[Kite DEBUG] init_downloads context=%p\n", (void *)context);
     g_signal_connect(context, "download-started", G_CALLBACK(on_download_started), nullptr);
 }

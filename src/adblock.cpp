@@ -8,6 +8,7 @@
 
 #include "adblock_rules.h"
 #include "settings.h"
+#include "youtube_adblock.h"
 
 static WebKitUserContentManager *content_manager = nullptr;
 static WebKitUserContentFilterStore *filter_store = nullptr;
@@ -18,6 +19,31 @@ static gboolean exception_added = false;
 static gboolean adblock_enabled = true;
 static guint exception_generation = 0;
 static guint exception_serial = 0;
+
+static bool is_youtube_host(const std::string &host) {
+    return host == "youtube.com" || g_str_has_suffix(host.c_str(), ".youtube.com") ||
+           host == "youtube-nocookie.com" || g_str_has_suffix(host.c_str(), ".youtube-nocookie.com");
+}
+
+static bool youtube_adblocking_allowed() {
+    if (!adblock_enabled)
+        return false;
+
+    gchar **hosts = settings_adblock_exception_hosts();
+    bool allowed = true;
+    for (gchar **host = hosts; host && *host; host++) {
+        if (is_youtube_host(*host)) {
+            allowed = false;
+            break;
+        }
+    }
+    g_strfreev(hosts);
+    return allowed;
+}
+
+static void sync_youtube_adblock() {
+    youtube_adblock_set_enabled(youtube_adblocking_allowed());
+}
 
 // Look for filters.json next to the binary, then CWD, then ~/.config/kite/
 static gchar *find_filters_json_path() {
@@ -96,6 +122,7 @@ static void on_exception_saved(GObject *source, GAsyncResult *res, gpointer user
 
 void adblock_reload_exceptions() {
     exception_generation++;
+    sync_youtube_adblock();
 
     if (!adblock_enabled || !content_manager || !filter_store) {
         remove_exception_filter();
@@ -154,6 +181,7 @@ void init_adblocker() {
         content_manager = webkit_user_content_manager_new();
 
     adblock_enabled = settings_block_ads();
+    sync_youtube_adblock();
 
     gchar *filter_cache_dir = g_build_filename(g_get_user_cache_dir(), "kite", "adblock", NULL);
     g_mkdir_with_parents(filter_cache_dir, 0700);

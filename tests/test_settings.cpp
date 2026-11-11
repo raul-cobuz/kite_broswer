@@ -38,7 +38,6 @@ int main() {
     expect_str(settings_homepage(), "kite://newtab", "homepage defaults to new tab");
     check(settings_restore_session(), "session restore defaults to on");
     check(settings_download_directory() && *settings_download_directory(), "download directory has a default");
-    check(!settings_ask_download_directory(), "download destination defaults to automatic");
     check(settings_site_zoom("example.com") == 1.0, "site zoom defaults to 100%");
     check(settings_block_ads(), "ad blocking defaults to on");
     check(settings_strip_tracking_params(), "tracking parameter removal defaults to on");
@@ -71,7 +70,6 @@ int main() {
     settings_set_homepage("https://example.org");
     settings_set_restore_session(false);
     settings_set_download_directory("/tmp/kite-downloads");
-    settings_set_ask_download_directory(true);
     settings_set_site_zoom("example.com", 1.25);
     settings_set_site_zoom("a_b.test", 2.0);
     check(settings_site_zoom("example.com") == 1.25, "site zoom in memory");
@@ -117,7 +115,7 @@ int main() {
     value = g_key_file_get_string(file, "downloads", "directory", nullptr);
     expect_str(value, "/tmp/kite-downloads", "download directory persisted");
     g_free(value);
-    check(g_key_file_get_boolean(file, "downloads", "ask", nullptr), "ask flag persisted");
+    check(!g_key_file_has_key(file, "downloads", "ask", nullptr), "obsolete ask flag is removed");
     check(!g_key_file_get_boolean(file, "privacy", "block_ads", nullptr), "ad blocking persisted");
     check(!g_key_file_get_boolean(file, "privacy", "strip_tracking_params", nullptr),
           "tracking removal persisted");
@@ -138,7 +136,6 @@ int main() {
     expect_str(settings_homepage(), "https://example.org", "homepage restored");
     check(!settings_restore_session(), "session restore restored");
     expect_str(settings_download_directory(), "/tmp/kite-downloads", "download directory restored");
-    check(settings_ask_download_directory(), "ask flag restored");
     check(settings_site_zoom("example.com") == 1.25, "site zoom restored");
     check(settings_site_zoom("a_b.test") == 2.0, "escaped site zoom restored");
     check(!settings_block_ads(), "ad blocking restored");

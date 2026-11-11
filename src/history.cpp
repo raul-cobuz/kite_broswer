@@ -82,7 +82,12 @@ bool history_init(const gchar *database_path) {
                   "title TEXT NOT NULL DEFAULT '',"
                   "created INTEGER NOT NULL"
                   ") WITHOUT ROWID;") ||
-        !exec_sql("CREATE INDEX IF NOT EXISTS bookmarks_created ON bookmarks(created DESC);")) {
+        !exec_sql("CREATE INDEX IF NOT EXISTS bookmarks_created ON bookmarks(created DESC);") ||
+        !exec_sql("CREATE TABLE IF NOT EXISTS pinned_links("
+                  "url TEXT PRIMARY KEY,"
+                  "title TEXT NOT NULL DEFAULT '',"
+                  "position INTEGER NOT NULL"
+                  ") WITHOUT ROWID;")) {
         history_close();
         return false;
     }
@@ -316,4 +321,97 @@ std::vector<HistoryEntry> bookmarks_list() {
     }
     sqlite3_finalize(stmt);
     return entries;
+}
+
+std::vector<PinnedLink> pinned_links_list() {
+    std::vector<PinnedLink> links;
+    if (!db)
+        return links;
+
+    sqlite3_stmt *stmt = nullptr;
+    const char *sql = "SELECT url,title FROM pinned_links ORDER BY position ASC, url ASC LIMIT ?1";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return links;
+    sqlite3_bind_int(stmt, 1, KITE_MAX_PINNED_LINKS);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char *url = sqlite3_column_text(stmt, 0);
+        const unsigned char *title = sqlite3_column_text(stmt, 1);
+        PinnedLink link;
+        link.url = url ? (const char *)url : "";
+        link.title = title ? (const char *)title : "";
+        if (!link.url.empty())
+            links.push_back(link);
+    }
+    sqlite3_finalize(stmt);
+    return links;
+}
+
+int pinned_links_count() {
+    if (!db)
+        return 0;
+
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM pinned_links", -1, &stmt, nullptr) != SQLITE_OK)
+        return 0;
+    int count = sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int(stmt, 0) : 0;
+    sqlite3_finalize(stmt);
+    return count;
+}
+
+bool pinned_link_exists(const gchar *url) {
+    if (!db || !url || !*url)
+        return false;
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, "SELECT 1 FROM pinned_links WHERE url=?1 LIMIT 1", -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_text(stmt, 1, url, -1, SQLITE_TRANSIENT);
+    bool exists = sqlite3_step(stmt) == SQLITE_ROW;
+    sqlite3_finalize(stmt);
+    return exists;
+}
+
+bool pinned_link_add(const gchar *url, const gchar *title) {
+    if (!db || !url || !*url)
+        return false;
+
+    if (pinned_link_exists(url)) {
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db, "UPDATE pinned_links SET title=?2 WHERE url=?1", -1, &stmt, nullptr) !=
+            SQLITE_OK)
+            return false;
+        sqlite3_bind_text(stmt, 1, url, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, title ? title : "", -1, SQLITE_TRANSIENT);
+        bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+        sqlite3_finalize(stmt);
+        return ok;
+    }
+
+    if (pinned_links_count() >= KITE_MAX_PINNED_LINKS)
+        return false;
+
+    sqlite3_stmt *stmt = nullptr;
+    const char *sql =
+        "INSERT INTO pinned_links(url,title,position) VALUES(?1,?2,"
+        "(SELECT COALESCE(MAX(position),-1)+1 FROM pinned_links))";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_text(stmt, 1, url, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, title ? title : "", -1, SQLITE_TRANSIENT);
+    bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+bool pinned_link_remove(const gchar *url) {
+    if (!db || !url || !*url)
+        return false;
+
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, "DELETE FROM pinned_links WHERE url=?1", -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_text(stmt, 1, url, -1, SQLITE_TRANSIENT);
+    bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+    sqlite3_finalize(stmt);
+    return ok;
 }

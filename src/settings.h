@@ -20,8 +20,6 @@ void settings_set_restore_session(bool enabled);
 
 const gchar *settings_download_directory();
 void settings_set_download_directory(const gchar *path);
-bool settings_ask_download_directory();
-void settings_set_ask_download_directory(bool ask);
 
 double settings_site_zoom(const gchar *host);
 void settings_set_site_zoom(const gchar *host, double level);

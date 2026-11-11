@@ -190,6 +190,7 @@ static void navigate_url_entry(const gchar *text) {
         return;
 
     std::string target_url = resolve_url_input(text);
+    g_printerr("[Kite DEBUG] navigate_url_entry text=%s -> target=%s\n", text, target_url.c_str());
     webkit_web_view_load_uri(web_view, target_url.c_str());
     gtk_widget_grab_focus(GTK_WIDGET(web_view));
 }
@@ -316,6 +317,14 @@ static void on_home_clicked(GtkButton *btn, gpointer user_data) {
 static void on_new_tab_clicked(GtkButton *btn, gpointer user_data) {
     create_new_tab(KITE_NEWTAB_URL);
     focus_url_bar();
+}
+
+static void on_extensions_clicked(GtkButton *btn, gpointer user_data) {
+    WebKitWebView *web_view = get_active_webview();
+    if (web_view)
+        webkit_web_view_load_uri(web_view, KITE_EXTENSIONS_URL);
+    else
+        create_new_tab(KITE_EXTENSIONS_URL);
 }
 
 static void on_bookmark_toggled(GtkToggleButton *button, gpointer user_data) {
@@ -541,6 +550,8 @@ void create_browser_window() {
     gtk_button_set_always_show_image(GTK_BUTTON(browser.btn_reload), TRUE);
     GtkWidget *btn_home = gtk_button_new_from_icon_name("go-home-symbolic", GTK_ICON_SIZE_BUTTON);
     GtkWidget *btn_new_tab = gtk_button_new_from_icon_name("list-add-symbolic", GTK_ICON_SIZE_BUTTON);
+    GtkWidget *btn_extensions =
+        gtk_button_new_from_icon_name("applications-other-symbolic", GTK_ICON_SIZE_BUTTON);
     browser.btn_bookmark = gtk_toggle_button_new();
     gtk_button_set_image(GTK_BUTTON(browser.btn_bookmark),
                          gtk_image_new_from_icon_name("non-starred-symbolic", GTK_ICON_SIZE_BUTTON));
@@ -552,6 +563,7 @@ void create_browser_window() {
     gtk_widget_set_tooltip_text(browser.btn_reload, "Reload");
     gtk_widget_set_tooltip_text(btn_home, "Home");
     gtk_widget_set_tooltip_text(btn_new_tab, "New tab (Ctrl+T)");
+    gtk_widget_set_tooltip_text(btn_extensions, "Extensions");
     gtk_widget_set_tooltip_text(browser.btn_bookmark, "Bookmark this page (Ctrl+D)");
     gtk_widget_set_tooltip_text(browser.btn_dark, "Toggle Dark Mode (F9 / Ctrl+Shift+D)");
 
@@ -560,6 +572,7 @@ void create_browser_window() {
     g_signal_connect(browser.btn_reload, "clicked", G_CALLBACK(on_reload_clicked), NULL);
     g_signal_connect(btn_home, "clicked", G_CALLBACK(on_home_clicked), NULL);
     g_signal_connect(btn_new_tab, "clicked", G_CALLBACK(on_new_tab_clicked), NULL);
+    g_signal_connect(btn_extensions, "clicked", G_CALLBACK(on_extensions_clicked), NULL);
     g_signal_connect(browser.btn_bookmark, "toggled", G_CALLBACK(on_bookmark_toggled), NULL);
     g_signal_connect(browser.btn_dark, "toggled", G_CALLBACK(on_dark_mode_toggled), NULL);
 
@@ -568,11 +581,12 @@ void create_browser_window() {
     gtk_box_pack_start(GTK_BOX(toolbar), browser.btn_reload, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), btn_home, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), btn_new_tab, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(toolbar), btn_extensions, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), browser.btn_bookmark, FALSE, FALSE, 0);
 
     browser.url_entry = gtk_entry_new();
     gtk_style_context_add_class(gtk_widget_get_style_context(browser.url_entry), "kite-omnibox");
-    gtk_entry_set_placeholder_text(GTK_ENTRY(browser.url_entry), "Search with DuckDuckGo or type a URL");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(browser.url_entry), "Search with Google or type a URL");
     gtk_box_pack_start(GTK_BOX(toolbar), browser.url_entry, TRUE, TRUE, 2);
     g_signal_connect(browser.url_entry, "activate", G_CALLBACK(on_url_activate), NULL);
     g_signal_connect(browser.url_entry, "changed", G_CALLBACK(on_url_entry_changed), NULL);

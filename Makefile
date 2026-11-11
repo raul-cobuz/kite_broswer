@@ -2,8 +2,10 @@ BUILD_DIR ?= build
 RELEASE_DIR := $(BUILD_DIR)/release
 DEBUG_DIR := $(BUILD_DIR)/debug
 JOBS ?= $(shell nproc 2>/dev/null || echo 2)
+PREFIX ?= $(HOME)/.local
+BINDIR ?= $(PREFIX)/bin
 
-.PHONY: all debug run test filters clean
+.PHONY: all debug run test filters install clean
 
 all:
 	cmake -S . -B $(RELEASE_DIR) -DCMAKE_BUILD_TYPE=Release
@@ -23,6 +25,11 @@ filters:
 
 run: all filters
 	./mybrowser
+
+install: all
+	install -d "$(DESTDIR)$(BINDIR)"
+	install -m 755 mybrowser "$(DESTDIR)$(BINDIR)/kite"
+	install -m 644 filters.json "$(DESTDIR)$(BINDIR)/filters.json"
 
 clean:
 	rm -rf $(BUILD_DIR) mybrowser mybrowser-debug

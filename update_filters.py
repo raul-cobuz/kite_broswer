@@ -38,6 +38,33 @@ COSMETIC_SELECTORS = [
     ".sponsored-content",
     ".sponsored-post",
     ".native-ad",
+    # YouTube ad units not covered by the in-page ad-block script.
+    "#masthead-ad",
+    "#player-ads",
+    "ytd-display-ad-renderer",
+    "ytd-promoted-sparkles-web-renderer",
+    "ytd-promoted-sparkles-text-search-renderer",
+    "ytd-in-feed-ad-layout-renderer",
+    "ytd-ad-slot-renderer",
+    "ytd-banner-promo-renderer",
+    "ytd-video-masthead-ad-v3-renderer",
+    "ytd-compact-promoted-video-renderer",
+    ".ytp-ad-overlay-container",
+    ".ytp-ad-progress-list",
+    ".ytp-ad-module",
+    ".ytp-ad-player-overlay",
+    ".ytp-ad-image-overlay",
+    ".ytp-ad-text-overlay",
+    ".ytp-ad-survey",
+]
+
+# YouTube ad traffic that is still a separate network request. Video ads are
+# removed in-page by youtube_adblock.cpp because they share the normal CDN.
+AD_URL_FILTERS = [
+    r"^https?://([^/]+\.)?youtube\.com/api/stats/ads",
+    r"^https?://([^/]+\.)?youtube\.com/pagead/",
+    r"^https?://([^/]+\.)?youtube\.com/ptracking",
+    r"^https?://([^/]+\.)?youtube\.com/youtubei/v1/log_event",
 ]
 
 AD_DOMAINS = [
@@ -116,6 +143,15 @@ def build_rules(ad_domains=None, tracker_domains=None, allowlist=None):
                 "url-filter": domain_url_filter(domain),
                 "resource-type": BLOCKED_RESOURCE_TYPES,
                 "load-type": ["third-party"],
+            },
+            "action": {"type": "block"},
+        })
+
+    for url_filter in AD_URL_FILTERS:
+        rules.append({
+            "trigger": {
+                "url-filter": url_filter,
+                "resource-type": BLOCKED_RESOURCE_TYPES,
             },
             "action": {"type": "block"},
         })

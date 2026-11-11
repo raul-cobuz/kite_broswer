@@ -5,6 +5,7 @@
 #define KITE_NEWTAB_URL "kite://newtab"
 #define KITE_HISTORY_URL "kite://history"
 #define KITE_BOOKMARKS_URL "kite://bookmarks"
+#define KITE_EXTENSIONS_URL "kite://extensions"
 
 // Must be called on a context before any WebKitWebView is created with it.
 void init_kite_pages(WebKitWebContext *context);

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "browser_window.h"
+#include "extensions.h"
 #include "history.h"
 #include "settings.h"
 #include "url_utils.h"
@@ -42,6 +43,100 @@ static std::string query_param(const gchar *query, const gchar *name) {
     std::string result = value ? value : "";
     g_hash_table_destroy(params);
     return result;
+}
+
+static std::string escape_query_value(const std::string &value) {
+    gchar *escaped = g_uri_escape_string(value.c_str(), nullptr, FALSE);
+    std::string result = escaped ? escaped : "";
+    g_free(escaped);
+    return result;
+}
+
+struct SearchHit {
+    std::string query;
+    std::string url;
+    std::string engine;
+};
+
+static bool search_hit_from_entry(const HistoryEntry &entry, SearchHit &hit) {
+    GError *error = nullptr;
+    GUri *parsed = g_uri_parse(entry.url.c_str(), G_URI_FLAGS_NONE, &error);
+    if (!parsed) {
+        g_clear_error(&error);
+        return false;
+    }
+
+    const gchar *host_value = g_uri_get_host(parsed);
+    const gchar *path_value = g_uri_get_path(parsed);
+    const gchar *query_value = g_uri_get_query(parsed);
+
+    std::string host = host_value ? host_value : "";
+    std::string path = path_value ? path_value : "";
+    std::string query = query_value ? query_value : "";
+    g_uri_unref(parsed);
+
+    if (host.rfind("www.", 0) == 0)
+        host = host.substr(4);
+    if (host.empty())
+        return false;
+
+    std::string search_query;
+    std::string engine;
+    bool is_google = host == "google.com" || host.rfind("google.", 0) == 0;
+    if (is_google && path.rfind("/search", 0) == 0) {
+        search_query = query_param(query.c_str(), "q");
+        engine = "Google";
+    } else if ((host == "youtube.com" || host == "m.youtube.com") && path.rfind("/results", 0) == 0) {
+        search_query = query_param(query.c_str(), "search_query");
+        engine = "YouTube";
+    } else if (host == "github.com" && path.rfind("/search", 0) == 0) {
+        search_query = query_param(query.c_str(), "q");
+        engine = "GitHub";
+    } else if ((host == "wikipedia.org" || g_str_has_suffix(host.c_str(), ".wikipedia.org")) &&
+               (path.rfind("/wiki/Special:Search", 0) == 0 || path.rfind("/w/index.php", 0) == 0)) {
+        search_query = query_param(query.c_str(), "search");
+        engine = "Wikipedia";
+    } else if ((host == "reddit.com" || g_str_has_suffix(host.c_str(), ".reddit.com")) &&
+               path.rfind("/search", 0) == 0) {
+        search_query = query_param(query.c_str(), "q");
+        engine = "Reddit";
+    } else if ((host == "duckduckgo.com" || host == "html.duckduckgo.com" || host == "lite.duckduckgo.com") &&
+               (path == "/" || path == "/html" || path == "/html/" || path == "/lite" || path == "/lite/")) {
+        search_query = query_param(query.c_str(), "q");
+        engine = "DuckDuckGo";
+    } else if ((host == "bing.com" || host.rfind("bing.", 0) == 0) && path.rfind("/search", 0) == 0) {
+        search_query = query_param(query.c_str(), "q");
+        engine = "Bing";
+    }
+
+    if (search_query.empty() || engine.empty())
+        return false;
+
+    hit.query = search_query;
+    hit.url = entry.url;
+    hit.engine = engine;
+    return true;
+}
+
+static std::vector<SearchHit> recent_search_hits(int limit) {
+    std::vector<SearchHit> hits;
+    std::unordered_set<std::string> seen;
+    for (const auto &entry : history_recent(200)) {
+        SearchHit hit;
+        if (!search_hit_from_entry(entry, hit))
+            continue;
+
+        gchar *folded = g_utf8_casefold(hit.query.c_str(), -1);
+        std::string key = folded ? folded : hit.query;
+        g_free(folded);
+        if (!seen.insert(key).second)
+            continue;
+
+        hits.push_back(hit);
+        if ((int)hits.size() >= limit)
+            break;
+    }
+    return hits;
 }
 
 static std::string remove_href(const char *page, const std::string &url) {
@@ -105,10 +200,10 @@ static const char *CLOCK_SVG =
     "stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"8.5\"/>"
     "<path d=\"M12 7.5V12l3 2\"/></svg>";
 
-static const char *STAR_SVG =
-    "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" "
-    "stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m12 3.8 2.5 5.1 5.6.8-4 3.9.9 5.6-5-2.6-5 "
-    "2.6.9-5.6-4-3.9 5.6-.8Z\"/></svg>";
+static const char *PIN_SVG =
+    "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" "
+    "stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 3.5h6l-1 6 3.5 3.5H6.5L10 9.5Z\"/>"
+    "<path d=\"M12 13v7\"/></svg>";
 
 static const char *SEARCH_SVG =
     "<svg class=\"search-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" "
@@ -351,6 +446,226 @@ body.incognito-page {
   color: var(--muted);
 }
 .shortcut:hover .name { color: var(--text); }
+
+/* Recent searches strip */
+.recent-searches {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 720px;
+  margin: 20px auto 0;
+  padding: 7px 10px 7px 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--tile-shadow);
+  text-align: left;
+  overflow: hidden;
+}
+.rs-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.rs-label svg { width: 14px; height: 14px; }
+.rs-chips {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: none;
+}
+.rs-chips::-webkit-scrollbar { display: none; }
+.search-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  border: 1px solid transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  white-space: nowrap;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
+}
+.search-chip:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+.search-chip .q { max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
+.search-chip .go { color: var(--muted); font-size: 12px; }
+.search-chip:hover .go { color: var(--accent); }
+
+/* Quick links: pinned and recent */
+.quicklinks {
+  width: 100%;
+  max-width: 820px;
+  margin: 30px auto 0;
+  text-align: left;
+}
+.quicklinks + .quicklinks { margin-top: 22px; }
+.quicklinks-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 26px;
+  padding: 0 6px;
+  margin-bottom: 8px;
+}
+.quicklinks-head h2 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.quicklinks-links { display: flex; align-items: center; gap: 14px; font-size: 12px; }
+.quicklinks-note { color: var(--muted); font-size: 11.5px; }
+.quicklinks-empty {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.quicklinks .shortcuts {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  justify-content: flex-start;
+  gap: 12px 6px;
+}
+.pinned-shortcuts .pin-card { position: relative; width: 82px; }
+.pin-card .shortcut { width: 100%; }
+.pin-card .tile { position: relative; }
+.pin-flag {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--accent);
+}
+.pin-flag svg { width: 10px; height: 10px; }
+.pin-remove {
+  position: absolute;
+  top: -7px;
+  right: 0;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(.85);
+  transition: opacity .15s ease, transform .15s ease, color .15s ease, border-color .15s ease;
+}
+.pin-card:hover .pin-remove,
+.pin-card:focus-within .pin-remove { opacity: 1; transform: none; }
+.pin-remove:hover { color: var(--danger); border-color: var(--danger); text-decoration: none; }
+.pin-add { position: relative; }
+.pin-add summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.pin-add summary::-webkit-details-marker { display: none; }
+.pin-add summary:hover,
+.pin-add[open] summary { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.pin-add summary .plus { font-size: 15px; line-height: 1; }
+.pin-form {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  display: grid;
+  grid-template-columns: minmax(110px, .9fr) minmax(160px, 1.3fr) auto;
+  gap: 8px;
+  width: min(500px, calc(100vw - 48px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-soft);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .16);
+}
+.pin-form input {
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.pin-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.btn:hover { background: var(--bg-muted); text-decoration: none; }
+.btn.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+html[data-theme="dark"] .btn.primary { color: #121214; }
+.btn.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { border-color: var(--danger); background: var(--accent-soft); }
+.newtab-notice {
+  width: 100%;
+  max-width: 640px;
+  margin: 18px auto 0;
+  text-align: left;
+}
+
 .shelf {
   width: 100%;
   max-width: 980px;
@@ -370,10 +685,21 @@ body.incognito-page {
   min-width: 0;
 }
 .panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 8px;
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -.01em;
+}
+.panel h2::before {
+  content: "";
+  width: 4px;
+  height: 14px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--accent);
 }
 .panel .more {
   display: inline-block;
@@ -447,6 +773,7 @@ body.incognito-page {
 }
 .page-header h1 { margin: 0; font-size: 28px; letter-spacing: -.03em; font-weight: 600; }
 .page-header .count { color: var(--muted); font-size: 13px; font-weight: 400; margin-left: 8px; }
+.page-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .danger-link {
   flex: none;
   color: var(--danger);
@@ -475,6 +802,71 @@ body.incognito-page {
   text-align: center;
   background: var(--bg-soft);
 }
+.extensions { display: flex; flex-direction: column; gap: 12px; }
+.extension-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-soft);
+  box-shadow: var(--tile-shadow);
+}
+.ext-icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 700;
+}
+.ext-main { flex: 1; min-width: 0; }
+.ext-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ext-title strong { font-size: 14.5px; }
+.ext-version { color: var(--muted); font-size: 11.5px; }
+.ext-state {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.ext-state.enabled { color: var(--accent); background: var(--accent-soft); }
+.ext-state.disabled { color: var(--muted); background: var(--bg-muted); }
+.ext-state.error { color: var(--danger); background: var(--accent-soft); }
+.ext-description { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.ext-meta {
+  margin: 6px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ext-error { margin: 6px 0 0; color: var(--danger); font-size: 12.5px; }
+.ext-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.ext-note { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.ext-note code, .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.code {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-muted);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 2;
+}
 .page-footer {
   max-width: 900px;
   width: 100%;
@@ -497,6 +889,10 @@ body.incognito-page {
   .content { padding: 18px 16px 44px; }
   .page-header { align-items: flex-start; flex-direction: column; }
   .page-footer { padding: 14px 16px 24px; }
+  .recent-searches { flex-direction: column; align-items: stretch; gap: 6px; }
+  .rs-label { padding-left: 2px; }
+  .pin-form { grid-template-columns: 1fr; }
+  .extension-card { flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
@@ -525,7 +921,7 @@ static const char *SEARCH_JS = R"JS(
     var kind = looksLikeUrl(text);
     if (kind === 2) return 'http://' + text;
     if (kind === 1) return 'https://' + text;
-    return 'https://duckduckgo.com/?q=' + encodeURIComponent(text);
+    return 'https://www.google.com/search?q=' + encodeURIComponent(text);
   }
   document.querySelectorAll('form[data-kite-search]').forEach(function (form) {
     form.addEventListener('submit', function (event) {
@@ -563,50 +959,87 @@ static std::string topbar(bool incognito) {
         html += "<span class=\"badge\">Incognito</span>";
     } else {
         html += "<nav class=\"topnav\"><a href=\"kite://history\">History</a>"
-                "<a href=\"kite://bookmarks\">Bookmarks</a></nav>";
+                "<a href=\"kite://bookmarks\">Bookmarks</a>"
+                "<a href=\"kite://extensions\">Extensions</a></nav>";
     }
     return html + "</header>";
 }
 
 static std::string search_form() {
-    return "<form class=\"search\" action=\"https://duckduckgo.com/\" method=\"get\" data-kite-search>" +
+    return "<form class=\"search\" action=\"https://www.google.com/search\" method=\"get\" data-kite-search>" +
            std::string(SEARCH_SVG) +
-           "<input type=\"text\" name=\"q\" placeholder=\"Search with DuckDuckGo or type a URL\" "
+           "<input type=\"text\" name=\"q\" placeholder=\"Search with Google or type a URL\" "
            "autocomplete=\"off\" autocapitalize=\"off\" spellcheck=\"false\" enterkeyhint=\"go\" "
-           "aria-label=\"Search with DuckDuckGo or type a URL\">"
+           "aria-label=\"Search with Google or type a URL\">"
            "<button type=\"submit\">Search</button></form>";
 }
 
-static std::string top_sites(bool dark) {
-    std::string html;
-    std::vector<HistoryEntry> recent = history_recent(64);
-    std::unordered_set<std::string> seen_hosts;
-    int added = 0;
+static std::string recent_searches_bar() {
+    std::vector<SearchHit> hits = recent_search_hits(8);
+    if (hits.empty())
+        return "";
 
-    for (const auto &entry : recent) {
-        if (added >= 6)
-            break;
-        std::string host = host_label(entry.url, entry.host);
-        if (host.empty() || !seen_hosts.insert(host).second)
-            continue;
-        std::string label = display_host(host);
-        std::string initial(1, host_initial(host));
-        html += "<a class=\"shortcut\" href=\"" + html_escape(entry.url) + "\"><span class=\"tile\" style=\"" +
-                tile_style(host, dark) + "\">" + html_escape(initial) + "</span><span class=\"name\">" +
-                html_escape(label) + "</span></a>";
-        added++;
+    std::string html = "<div class=\"recent-searches\" aria-label=\"Recent searches\">"
+                       "<span class=\"rs-label\">" +
+                       std::string(CLOCK_SVG) + "Recent searches</span><div class=\"rs-chips\">";
+    for (const auto &hit : hits) {
+        html += "<a class=\"search-chip\" href=\"" + html_escape(hit.url) + "\" title=\"" +
+                html_escape(hit.query) + " — " + html_escape(hit.engine) + "\"><span class=\"q\">" +
+                html_escape(hit.query) + "</span><span class=\"go\">" + html_escape(hit.engine) +
+                "</span></a>";
     }
+    html += "</div></div>";
     return html;
 }
 
-static std::string shortcuts(bool dark) {
-    std::string html = "<div class=\"shortcuts\">";
-    html += "<a class=\"shortcut\" href=\"kite://history\"><span class=\"tile fixed\">" + std::string(CLOCK_SVG) +
-            "</span><span class=\"name\">History</span></a>";
-    html += "<a class=\"shortcut\" href=\"kite://bookmarks\"><span class=\"tile fixed\">" + std::string(STAR_SVG) +
-            "</span><span class=\"name\">Bookmarks</span></a>";
-    html += top_sites(dark);
-    html += "</div>";
+static std::string unpin_href(const std::string &url) {
+    return "kite://newtab/unpin?url=" + escape_query_value(url);
+}
+
+static std::string pinned_links_section(bool dark) {
+    std::vector<PinnedLink> pins = pinned_links_list();
+    int count = (int)pins.size();
+    int max_pins = KITE_MAX_PINNED_LINKS;
+
+    std::string html =
+        "<section class=\"quicklinks pinned-quicklinks\"><div class=\"quicklinks-head\"><h2>Pinned</h2>"
+        "<div class=\"quicklinks-links\"><span class=\"quicklinks-note\">" +
+        std::to_string(count) + " of " + std::to_string(max_pins) + "</span>";
+    if (count < max_pins) {
+        html += "<details class=\"pin-add\"><summary><span class=\"plus\">+</span> Add pin</summary>"
+                "<form class=\"pin-form\" action=\"kite://newtab/pin\" method=\"get\">"
+                "<input type=\"text\" name=\"title\" placeholder=\"Title (optional)\" aria-label=\"Pin title\" "
+                "autocomplete=\"off\">"
+                "<input type=\"text\" name=\"url\" placeholder=\"https://example.com\" aria-label=\"Pin URL\" "
+                "autocomplete=\"off\" required>"
+                "<button class=\"btn primary\" type=\"submit\">Pin</button></form></details>";
+    } else {
+        html += "<span class=\"quicklinks-note\">Remove one to add another</span>";
+    }
+    html += "</div></div>";
+
+    if (pins.empty()) {
+        html += "<p class=\"quicklinks-empty\">Pin up to five favourite pages for one-click access. "
+                "Choose a title and a URL above.</p>";
+    } else {
+        html += "<div class=\"shortcuts pinned-shortcuts\">";
+        for (const auto &pin : pins) {
+            std::string host = url_host(pin.url.c_str());
+            std::string label = pin.title.empty() ? display_host(host) : pin.title;
+            if (label.empty())
+                label = pin.url;
+            std::string initial(1, host_initial(host));
+            html += "<div class=\"pin-card\"><a class=\"pin-remove\" href=\"" +
+                    html_escape(unpin_href(pin.url)) + "\" title=\"Unpin\" aria-label=\"Unpin " +
+                    html_escape(label) + "\">&times;</a>";
+            html += "<a class=\"shortcut\" href=\"" + html_escape(pin.url) + "\" title=\"" +
+                    html_escape(pin.url) + "\"><span class=\"tile\" style=\"" + tile_style(host, dark) + "\">" +
+                    html_escape(initial) + "<span class=\"pin-flag\">" + PIN_SVG +
+                    "</span></span><span class=\"name\">" + html_escape(label) + "</span></a></div>";
+        }
+        html += "</div>";
+    }
+    html += "</section>";
     return html;
 }
 
@@ -656,12 +1089,45 @@ static std::string newtab_panel(const std::string &title, const std::vector<Hist
     return html;
 }
 
-static std::string newtab_page(bool incognito) {
+static std::string newtab_page(bool incognito, const std::string &path, const gchar *query) {
     bool dark = incognito || settings_dark_mode();
     std::vector<HistoryEntry> recent;
     std::vector<HistoryEntry> bookmarks;
     bool has_shelf = false;
+    std::string notice;
+    bool acted = path == "/pin" || path == "/unpin";
+
     if (!incognito) {
+        if (path == "/pin") {
+            std::string raw_url = query_param(query, "url");
+            std::string title = query_param(query, "title");
+            if (raw_url.empty()) {
+                notice = "<div class=\"notice\">Enter a URL to pin.</div>";
+            } else {
+                std::string url = normalize_url(raw_url);
+                if (pinned_link_exists(url.c_str())) {
+                    if (title.empty()) {
+                        notice = "<div class=\"notice\">That link is already pinned.</div>";
+                    } else if (pinned_link_add(url.c_str(), title.c_str())) {
+                        notice = "<div class=\"notice\">Pinned link updated.</div>";
+                    }
+                } else if (pinned_links_count() >= KITE_MAX_PINNED_LINKS) {
+                    notice = "<div class=\"notice\">You can pin up to five links. Remove one first.</div>";
+                } else if (pinned_link_add(url.c_str(), title.c_str())) {
+                    std::string host = url_host(url.c_str());
+                    std::string label = display_host(host);
+                    notice = "<div class=\"notice\">Pinned <strong>" + html_escape(label.empty() ? url : label) +
+                             "</strong> to the start page.</div>";
+                } else {
+                    notice = "<div class=\"notice\">Could not pin that link.</div>";
+                }
+            }
+        } else if (path == "/unpin") {
+            std::string url = query_param(query, "url");
+            if (!url.empty() && pinned_link_remove(url.c_str()))
+                notice = "<div class=\"notice\">Pinned link removed.</div>";
+        }
+
         recent = history_recent(12);
         bookmarks = bookmarks_list();
         has_shelf = !recent.empty() || !bookmarks.empty();
@@ -690,7 +1156,10 @@ static std::string newtab_page(bool incognito) {
     body += std::string(KITE_MARK_SVG) + "<h1 class=\"wordmark\">Kite</h1>"
             "<p class=\"tagline\">Search the web or type an address to get going.</p>";
     body += search_form();
-    body += shortcuts(dark);
+    body += recent_searches_bar();
+    if (!notice.empty())
+        body += "<div class=\"newtab-notice\">" + notice + "</div>";
+    body += pinned_links_section(dark);
     body += "</main>";
 
     if (has_shelf) {
@@ -700,6 +1169,8 @@ static std::string newtab_page(bool incognito) {
         body += "</section>";
     }
 
+    if (acted)
+        body += "<script>try{history.replaceState(null,'','kite://newtab');}catch(e){}</script>";
     body += SEARCH_JS;
     return page_shell("New tab", body, has_shelf ? "newtab-page has-shelf" : "newtab-page", false);
 }
@@ -791,6 +1262,225 @@ static std::string bookmarks_page(bool incognito, const std::string &path, const
     return page_shell("Bookmarks", body, "content-page", false);
 }
 
+static std::string extension_action_href(const char *action, const std::string &id) {
+    return std::string("kite://extensions/") + action + "?id=" + escape_query_value(id);
+}
+
+static std::string pending_extension_notice;
+static std::string pending_extension_message;
+
+static std::string extensions_redirect_page() {
+    return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+           "<meta http-equiv=\"refresh\" content=\"0; url=kite://extensions\">"
+           "<title>Extensions</title>"
+           "<script>window.location.replace('kite://extensions');</script>"
+           "</head><body></body></html>";
+}
+
+static std::string extension_notice_html(const std::string &code, const std::string &message) {
+    if (code == "installed")
+        return "<div class=\"notice\">Extension installed and enabled.</div>";
+    if (code == "install_failed")
+        return "<div class=\"notice\">Could not install that folder: " +
+               html_escape(message.empty() ? "unknown error" : message) + "</div>";
+    if (code == "enabled")
+        return "<div class=\"notice\">Extension enabled.</div>";
+    if (code == "disabled")
+        return "<div class=\"notice\">Extension disabled.</div>";
+    if (code == "change_failed")
+        return "<div class=\"notice\">Could not change that extension.</div>";
+    if (code == "removed")
+        return "<div class=\"notice\">Extension removed.</div>";
+    if (code == "remove_failed")
+        return "<div class=\"notice\">Could not remove that extension.</div>";
+    if (code == "reloaded")
+        return "<div class=\"notice\">Extensions reloaded.</div>";
+    return "";
+}
+
+static const char *EXTENSION_EXAMPLE = R"JSON(my-extension/
+  manifest.json
+  content.js
+  style.css
+
+{
+  "manifest_version": 3,
+  "name": "My extension",
+  "version": "1.0",
+  "description": "What this extension does",
+  "content_scripts": [
+    {
+      "matches": ["https://example.com/*"],
+      "js": ["content.js"],
+      "css": ["style.css"],
+      "run_at": "document_end"
+    }
+  ]
+})JSON";
+
+static std::string extensions_page(bool incognito, const std::string &path, const gchar *query) {
+    if (incognito) {
+        return page_shell(
+            "Extensions",
+            topbar(true) +
+                "<main class=\"content\"><div class=\"page-header\"><h1>Extensions</h1></div>"
+                "<div class=\"empty-state\">Extensions are managed from a normal Kite tab.</div></main>",
+            "content-page incognito-page", true);
+    }
+
+    std::string notice;
+    if (path == "/install") {
+        std::string error;
+        bool installed = false;
+        bool chose_folder = false;
+        GtkWidget *dialog = gtk_file_chooser_dialog_new(
+            "Choose an extension folder", browser.main_window ? GTK_WINDOW(browser.main_window) : nullptr,
+            GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "Cancel", GTK_RESPONSE_CANCEL, "Install", GTK_RESPONSE_ACCEPT,
+            nullptr);
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), g_get_home_dir());
+        if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+            chose_folder = true;
+            gchar *folder = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            installed = folder && extensions_install_from_folder(folder, &error);
+            g_free(folder);
+        }
+        gtk_widget_destroy(dialog);
+
+        if (chose_folder) {
+            if (installed) {
+                pending_extension_notice = "installed";
+            } else {
+                pending_extension_notice = "install_failed";
+                pending_extension_message = error;
+            }
+        }
+        return extensions_redirect_page();
+    }
+
+    if (path == "/enable" || path == "/disable") {
+        std::string id = query_param(query, "id");
+        if (!id.empty())
+            pending_extension_notice =
+                extensions_set_enabled(id.c_str(), path == "/enable") ? (path == "/enable" ? "enabled" : "disabled")
+                                                                      : "change_failed";
+        return extensions_redirect_page();
+    }
+
+    if (path == "/remove") {
+        std::string id = query_param(query, "id");
+        if (!id.empty())
+            pending_extension_notice = extensions_remove(id.c_str()) ? "removed" : "remove_failed";
+        return extensions_redirect_page();
+    }
+
+    if (path == "/reload") {
+        extensions_reload();
+        pending_extension_notice = "reloaded";
+        return extensions_redirect_page();
+    }
+
+    if (!pending_extension_notice.empty()) {
+        notice = extension_notice_html(pending_extension_notice, pending_extension_message);
+        pending_extension_notice.clear();
+        pending_extension_message.clear();
+    }
+
+    std::vector<ExtensionInfo> extensions = extensions_list();
+    int enabled_count = 0;
+    for (const auto &extension : extensions) {
+        if (extension.enabled)
+            enabled_count++;
+    }
+
+    std::string body = topbar(false);
+    body += "<main class=\"content\"><div class=\"page-header\"><h1>Extensions";
+    if (!extensions.empty()) {
+        body += "<span class=\"count\">" + std::to_string(extensions.size()) + " installed &middot; " +
+                std::to_string(enabled_count) + " enabled</span>";
+    }
+    body += "</h1><div class=\"page-actions\">"
+            "<a class=\"btn primary\" href=\"kite://extensions/install\">Install from folder</a>"
+            "<a class=\"btn\" href=\"kite://extensions/reload\">Reload all</a></div></div>" +
+            notice;
+
+    if (extensions.empty()) {
+        body += "<div class=\"empty-state\">No extensions installed yet. Choose a folder that contains a "
+                "<code>manifest.json</code> to add content scripts or styles to matching pages.</div>";
+    } else {
+        body += "<div class=\"extensions\">";
+        for (const auto &extension : extensions) {
+            std::string initial(1, host_initial(extension.name));
+            body += "<article class=\"extension-card\"><div class=\"ext-icon\">" + html_escape(initial) +
+                    "</div><div class=\"ext-main\"><div class=\"ext-title\"><strong>" +
+                    html_escape(extension.name) + "</strong>";
+            if (!extension.version.empty())
+                body += "<span class=\"ext-version\">v" + html_escape(extension.version) + "</span>";
+            if (!extension.valid)
+                body += "<span class=\"ext-state error\">Error</span>";
+            else if (extension.enabled)
+                body += "<span class=\"ext-state enabled\">Enabled</span>";
+            else
+                body += "<span class=\"ext-state disabled\">Disabled</span>";
+            body += "</div>";
+
+            if (!extension.description.empty())
+                body += "<p class=\"ext-description\">" + html_escape(extension.description) + "</p>";
+
+            std::string meta;
+            if (extension.script_count > 0)
+                meta += std::to_string(extension.script_count) +
+                        (extension.script_count == 1 ? " script" : " scripts");
+            if (extension.style_count > 0) {
+                if (!meta.empty())
+                    meta += " · ";
+                meta += std::to_string(extension.style_count) +
+                        (extension.style_count == 1 ? " style" : " styles");
+            }
+            if (meta.empty())
+                meta = "No content scripts";
+            meta += " · " + extension.path;
+            body += "<p class=\"ext-meta\">" + html_escape(meta) + "</p>";
+
+            if (!extension.error.empty())
+                body += "<p class=\"ext-error\">" + html_escape(extension.error) + "</p>";
+
+            body += "<div class=\"ext-actions\">";
+            if (extension.valid) {
+                if (extension.enabled)
+                    body += "<a class=\"btn\" href=\"" + html_escape(extension_action_href("disable", extension.id)) +
+                            "\">Disable</a>";
+                else
+                    body += "<a class=\"btn\" href=\"" + html_escape(extension_action_href("enable", extension.id)) +
+                            "\">Enable</a>";
+            }
+            body += "<a class=\"btn danger\" href=\"" + html_escape(extension_action_href("remove", extension.id)) +
+                    "\" onclick=\"return confirm('Remove this extension?');\">Remove</a>";
+            body += "</div></div></article>";
+        }
+        body += "</div>";
+    }
+
+    body += "<section class=\"panel\" style=\"margin-top:18px\"><h2>Build a custom extension</h2>"
+            "<p class=\"ext-note\">Create a folder containing a <code>manifest.json</code> plus the scripts or "
+            "styles you want to inject, then choose the folder with <strong>Install from folder</strong>. Kite "
+            "copies extensions to <code>" +
+            html_escape(extensions_directory()) +
+            "</code> and can enable, disable or remove them here.</p>"
+            "<div class=\"code\">" +
+            html_escape(EXTENSION_EXAMPLE) +
+            "</div>"
+            "<p class=\"ext-note\">Supported manifest fields are <code>matches</code>, <code>js</code>, "
+            "<code>css</code>, <code>run_at</code> and <code>all_frames</code> inside <code>content_scripts</code>. "
+            "Chrome Web Store <code>.crx</code> packages and <code>chrome.*</code> APIs are not available in "
+            "WebKitGTK, so keep custom extensions to content scripts and styles.</p></section>";
+
+    body += "</main>";
+    body += "<footer class=\"page-footer\"><a href=\"kite://newtab\">Kite start page</a>"
+            "<a href=\"kite://history\">History</a><a href=\"kite://bookmarks\">Bookmarks</a>"
+            "<span>Kite Browser</span></footer>";
+    return page_shell("Extensions", body, "content-page", false);
+}
+
 static std::string not_found_page() {
     return page_shell("Page not found",
                       topbar(false) +
@@ -832,11 +1522,13 @@ static void on_kite_request(WebKitURISchemeRequest *request, gpointer user_data)
 
     std::string html;
     if (host_name.empty() || host_name == "newtab")
-        html = newtab_page(incognito);
+        html = newtab_page(incognito, path_name, query);
     else if (host_name == "history")
         html = history_page(incognito, path_name, query);
     else if (host_name == "bookmarks")
         html = bookmarks_page(incognito, path_name, query);
+    else if (host_name == "extensions")
+        html = extensions_page(incognito, path_name, query);
     else
         html = not_found_page();
 

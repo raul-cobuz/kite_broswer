@@ -2755,11 +2755,95 @@
   },
   {
     "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?youtube\\.com/api/stats/ads",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?youtube\\.com/pagead/",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?youtube\\.com/ptracking",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
+      "url-filter": "^https?://([^/]+\\.)?youtube\\.com/youtubei/v1/log_event",
+      "resource-type": [
+        "image",
+        "style-sheet",
+        "script",
+        "font",
+        "raw",
+        "svg-document",
+        "media",
+        "websocket",
+        "fetch",
+        "ping",
+        "other"
+      ]
+    },
+    "action": {
+      "type": "block"
+    }
+  },
+  {
+    "trigger": {
       "url-filter": ".*"
     },
     "action": {
       "type": "css-display-none",
-      "selector": ".advertisement, .advertising, .ad-banner, .ad-container, .ad-slot, .adsbygoogle, [id^='google_ads'], [id^='div-gpt-ad'], .taboola, .outbrain, .sponsored-content, .sponsored-post, .native-ad"
+      "selector": ".advertisement, .advertising, .ad-banner, .ad-container, .ad-slot, .adsbygoogle, [id^='google_ads'], [id^='div-gpt-ad'], .taboola, .outbrain, .sponsored-content, .sponsored-post, .native-ad, #masthead-ad, #player-ads, ytd-display-ad-renderer, ytd-promoted-sparkles-web-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-in-feed-ad-layout-renderer, ytd-ad-slot-renderer, ytd-banner-promo-renderer, ytd-video-masthead-ad-v3-renderer, ytd-compact-promoted-video-renderer, .ytp-ad-overlay-container, .ytp-ad-progress-list, .ytp-ad-module, .ytp-ad-player-overlay, .ytp-ad-image-overlay, .ytp-ad-text-overlay, .ytp-ad-survey"
     }
   }
 ]

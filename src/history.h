@@ -13,6 +13,13 @@ struct HistoryEntry {
     int visit_count = 0;
 };
 
+struct PinnedLink {
+    std::string url;
+    std::string title;
+};
+
+constexpr int KITE_MAX_PINNED_LINKS = 5;
+
 // Opens (and creates if needed) the history database. Pass nullptr to use
 // ~/.local/share/kite/kite.db. Returns false when SQLite is unavailable.
 bool history_init(const gchar *database_path = nullptr);
@@ -33,3 +40,9 @@ bool bookmark_remove(const gchar *url);
 bool bookmark_toggle(const gchar *url, const gchar *title, bool *is_bookmarked);
 bool bookmark_exists(const gchar *url);
 std::vector<HistoryEntry> bookmarks_list();
+
+std::vector<PinnedLink> pinned_links_list();
+int pinned_links_count();
+bool pinned_link_add(const gchar *url, const gchar *title);
+bool pinned_link_remove(const gchar *url);
+bool pinned_link_exists(const gchar *url);

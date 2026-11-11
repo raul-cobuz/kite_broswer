@@ -5,6 +5,7 @@
 #include "browser_window.h"
 #include "dark_mode.h"
 #include "downloads.h"
+#include "extensions.h"
 #include "history.h"
 #include "kite_pages.h"
 #include "privacy.h"
@@ -137,6 +138,7 @@ int main(int argc, char *argv[]) {
                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
     init_adblocker();
+    extensions_init();
     tracking_protection_init();
     init_dark_mode();
 

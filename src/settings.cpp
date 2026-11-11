@@ -13,7 +13,6 @@ static bool dark_mode = false;
 static gchar *homepage = nullptr;
 static gchar *download_directory = nullptr;
 static bool restore_session = true;
-static bool ask_download_directory = false;
 static bool block_ads = true;
 static bool strip_tracking_params = true;
 static bool clear_on_exit = false;
@@ -77,7 +76,6 @@ void load_settings() {
     homepage = g_strdup("kite://newtab");
     download_directory = default_download_directory();
     restore_session = true;
-    ask_download_directory = false;
     block_ads = true;
     strip_tracking_params = true;
     clear_on_exit = false;
@@ -123,13 +121,6 @@ void load_settings() {
         g_clear_error(&error);
     } else {
         restore_session = restore;
-    }
-
-    gboolean ask = g_key_file_get_boolean(settings, "downloads", "ask", &error);
-    if (error) {
-        g_clear_error(&error);
-    } else {
-        ask_download_directory = ask;
     }
 
     gboolean ads = g_key_file_get_boolean(settings, "privacy", "block_ads", &error);
@@ -188,7 +179,8 @@ void save_settings() {
     g_key_file_set_string(settings, "general", "homepage", settings_homepage());
     g_key_file_set_boolean(settings, "session", "restore", restore_session);
     g_key_file_set_string(settings, "downloads", "directory", settings_download_directory());
-    g_key_file_set_boolean(settings, "downloads", "ask", ask_download_directory);
+    // Downloads always prompt now; drop the obsolete automatic-save flag.
+    g_key_file_remove_key(settings, "downloads", "ask", nullptr);
 
     g_key_file_set_boolean(settings, "privacy", "block_ads", block_ads);
     g_key_file_set_boolean(settings, "privacy", "strip_tracking_params", strip_tracking_params);
@@ -311,14 +303,6 @@ void settings_set_download_directory(const gchar *path) {
         return;
     g_free(download_directory);
     download_directory = g_strdup(path);
-}
-
-bool settings_ask_download_directory() {
-    return ask_download_directory;
-}
-
-void settings_set_ask_download_directory(bool ask) {
-    ask_download_directory = ask;
 }
 
 double settings_site_zoom(const gchar *host) {

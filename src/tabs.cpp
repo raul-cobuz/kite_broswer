@@ -19,7 +19,8 @@ static WebKitWebContext *incognito_context = nullptr;
 static std::vector<std::string> closed_tabs;
 static const size_t max_closed_tabs = 10;
 
-static void create_tab(const gchar *url, gboolean incognito);
+static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebKitWebView *related,
+                                      gboolean load_url);
 
 static bool is_trackable_url(const gchar *uri) {
     return uri && (g_str_has_prefix(uri, "http://") || g_str_has_prefix(uri, "https://") ||
@@ -82,6 +83,8 @@ void reopen_last_closed_tab() {
 }
 
 static void on_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_event, gpointer user_data) {
+    const gchar *uri = webkit_web_view_get_uri(web_view);
+    g_printerr("[Kite DEBUG] load-changed view=%p event=%d uri=%s\n", (void *)web_view, (int)load_event, uri ? uri : "(null)");
     GtkWidget *label = GTK_WIDGET(g_object_get_data(G_OBJECT(web_view), "tab_label"));
 
     if (load_event == WEBKIT_LOAD_STARTED && label) {
@@ -186,17 +189,27 @@ static void on_tab_close_clicked(GtkButton *btn, GtkWidget *child_page) {
 
 static GtkWidget *on_create_tab(WebKitWebView *web_view, WebKitNavigationAction *action, gpointer user_data) {
     WebKitURIRequest *req = webkit_navigation_action_get_request(action);
-    const gchar *uri = webkit_uri_request_get_uri(req);
-    create_tab(uri && *uri ? uri : KITE_NEWTAB_URL, webview_is_incognito(web_view));
-    return GTK_WIDGET(get_active_webview());
+    const gchar *uri = req ? webkit_uri_request_get_uri(req) : nullptr;
+
+    // WebKit starts the navigation itself in the view returned from this
+    // signal, so don't load the URL a second time here. The view must also be
+    // related to the one that requested the new window, and the return value
+    // is transfer-full: the notebook already owns a reference, so hand WebKit
+    // an extra one.
+    WebKitWebView *created = create_tab_view(uri && *uri ? uri : KITE_NEWTAB_URL,
+                                             webview_is_incognito(web_view), web_view, FALSE);
+    return GTK_WIDGET(g_object_ref(created));
 }
 
-static void create_tab(const gchar *url, gboolean incognito) {
+static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebKitWebView *related,
+                                      gboolean load_url) {
     if (!url || !*url)
         url = KITE_NEWTAB_URL;
 
     WebKitWebView *web_view;
-    if (incognito) {
+    if (related) {
+        web_view = WEBKIT_WEB_VIEW(webkit_web_view_new_with_related_view(related));
+    } else if (incognito) {
         web_view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", get_incognito_context(),
                                                 "user-content-manager", adblock_content_manager(), NULL));
     } else {
@@ -205,6 +218,7 @@ static void create_tab(const gchar *url, gboolean incognito) {
     }
     g_object_set_data(G_OBJECT(web_view), "is_incognito", GINT_TO_POINTER(incognito ? 1 : 0));
     g_object_set_data_full(G_OBJECT(web_view), "kite_requested_url", g_strdup(url), g_free);
+    g_printerr("[Kite DEBUG] create_tab url=%s incognito=%d view_ctx=%p default_ctx=%p\n", url ? url : "(null)", (int)incognito, (void *)webkit_web_view_get_context(web_view), (void *)webkit_web_context_get_default());
 
     apply_webview_settings(web_view);
 
@@ -240,7 +254,13 @@ static void create_tab(const gchar *url, gboolean incognito) {
     gint index = gtk_notebook_append_page(GTK_NOTEBOOK(browser.notebook), GTK_WIDGET(web_view), tab_box);
     gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(browser.notebook), GTK_WIDGET(web_view), TRUE);
     gtk_notebook_set_current_page(GTK_NOTEBOOK(browser.notebook), index);
-    webkit_web_view_load_uri(web_view, url);
+    if (load_url)
+        webkit_web_view_load_uri(web_view, url);
+    return web_view;
+}
+
+static void create_tab(const gchar *url, gboolean incognito) {
+    create_tab_view(url, incognito, nullptr, TRUE);
 }
 
 void create_new_tab(const gchar *url) {
