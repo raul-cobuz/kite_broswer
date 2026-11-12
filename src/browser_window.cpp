@@ -2,6 +2,7 @@
 
 #include <gdk/gdkkeysyms.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -10,7 +11,9 @@
 #include "find_bar.h"
 #include "history.h"
 #include "kite_pages.h"
+#include "omnibox.h"
 #include "privacy.h"
+#include "profile.h"
 #include "session.h"
 #include "settings.h"
 #include "tabs.h"
@@ -25,15 +28,48 @@ static void clear_omnibox_completions() {
         gtk_list_store_clear(completion_store);
 }
 
+static WebKitWebView *notebook_current_view(GtkWidget *notebook_widget) {
+    if (!notebook_widget)
+        return nullptr;
+    gint page_num = gtk_notebook_get_current_page(GTK_NOTEBOOK(notebook_widget));
+    if (page_num < 0)
+        return nullptr;
+    GtkWidget *child = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_widget), page_num);
+    return child && WEBKIT_IS_WEB_VIEW(child) ? WEBKIT_WEB_VIEW(child) : nullptr;
+}
+
+GtkNotebook *notebook_for_webview(WebKitWebView *web_view) {
+    if (!web_view)
+        return nullptr;
+    if (browser.notebook &&
+        gtk_notebook_page_num(GTK_NOTEBOOK(browser.notebook), GTK_WIDGET(web_view)) >= 0)
+        return GTK_NOTEBOOK(browser.notebook);
+    if (browser.split_notebook &&
+        gtk_notebook_page_num(GTK_NOTEBOOK(browser.split_notebook), GTK_WIDGET(web_view)) >= 0)
+        return GTK_NOTEBOOK(browser.split_notebook);
+    return nullptr;
+}
+
+bool split_view_active() {
+    if (!browser.split_notebook || !gtk_widget_get_visible(browser.split_notebook))
+        return false;
+    return gtk_notebook_get_n_pages(GTK_NOTEBOOK(browser.split_notebook)) > 0;
+}
+
 WebKitWebView *get_active_webview() {
     if (!browser.notebook)
         return nullptr;
 
-    gint page_num = gtk_notebook_get_current_page(GTK_NOTEBOOK(browser.notebook));
-    if (page_num < 0)
-        return nullptr;
-    GtkWidget *child = gtk_notebook_get_nth_page(GTK_NOTEBOOK(browser.notebook), page_num);
-    return child ? WEBKIT_WEB_VIEW(child) : nullptr;
+    if (split_view_active() && browser.split_focus_secondary) {
+        WebKitWebView *secondary = notebook_current_view(browser.split_notebook);
+        if (secondary)
+            return secondary;
+    }
+
+    WebKitWebView *primary = notebook_current_view(browser.notebook);
+    if (primary)
+        return primary;
+    return split_view_active() ? notebook_current_view(browser.split_notebook) : nullptr;
 }
 
 gboolean webview_is_incognito(WebKitWebView *web_view) {
@@ -124,37 +160,348 @@ void save_browser_session() {
         return;
 
     SessionState state;
-    gint current = gtk_notebook_get_current_page(GTK_NOTEBOOK(browser.notebook));
-    gint n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(browser.notebook));
+    WebKitWebView *active = get_active_webview();
 
-    for (gint i = 0; i < n_pages; i++) {
-        GtkWidget *child = gtk_notebook_get_nth_page(GTK_NOTEBOOK(browser.notebook), i);
-        if (!child || !WEBKIT_IS_WEB_VIEW(child))
-            continue;
-        WebKitWebView *web_view = WEBKIT_WEB_VIEW(child);
-        if (webview_is_incognito(web_view))
-            continue;
-        // The fresh start page opened at launch is not part of the restored
-        // session; otherwise every launch would accumulate another blank tab.
-        if (is_startup_newtab(web_view))
-            continue;
+    auto append_notebook = [&](GtkWidget *notebook_widget) {
+        if (!notebook_widget)
+            return;
+        gint n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(notebook_widget));
+        for (gint i = 0; i < n_pages; i++) {
+            GtkWidget *child = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_widget), i);
+            if (!child || !WEBKIT_IS_WEB_VIEW(child))
+                continue;
+            WebKitWebView *web_view = WEBKIT_WEB_VIEW(child);
+            if (webview_is_incognito(web_view))
+                continue;
+            // The fresh start page opened at launch is not part of the restored
+            // session; otherwise every launch would accumulate another blank tab.
+            if (is_startup_newtab(web_view))
+                continue;
 
-        if (i == current)
-            state.active_index = (int)state.urls.size();
+            if (web_view == active)
+                state.active_index = (int)state.urls.size();
 
-        const gchar *uri = webkit_web_view_get_uri(web_view);
-        const gchar *requested = (const gchar *)g_object_get_data(G_OBJECT(web_view), "kite_requested_url");
-        if (uri && *uri)
-            state.urls.push_back(uri);
-        else if (requested && *requested)
-            state.urls.push_back(requested);
-        else
-            state.urls.push_back(KITE_NEWTAB_URL);
-    }
+            const gchar *uri = webkit_web_view_get_uri(web_view);
+            const gchar *requested = (const gchar *)g_object_get_data(G_OBJECT(web_view), "kite_requested_url");
+            if (uri && *uri)
+                state.urls.push_back(uri);
+            else if (requested && *requested)
+                state.urls.push_back(requested);
+            else
+                state.urls.push_back(KITE_NEWTAB_URL);
+        }
+    };
+
+    append_notebook(browser.notebook);
+    append_notebook(browser.split_notebook);
 
     if (state.active_index >= (int)state.urls.size())
         state.active_index = 0;
     session_save(state);
+}
+
+void switch_profile_and_restart(const gchar *id) {
+    if (!id || !*id)
+        return;
+    save_browser_session();
+    save_settings();
+    if (profile_switch(id))
+        gtk_main_quit();
+}
+
+static void on_search_notice_response(GtkInfoBar *bar, gint response_id, gpointer user_data) {
+    (void)user_data;
+    const gchar *query = (const gchar *)g_object_get_data(G_OBJECT(bar), "kite_query");
+    WebKitWebView *web_view = get_active_webview();
+
+    if (response_id == GTK_RESPONSE_APPLY && query && *query && web_view) {
+        std::string url = google_search_url(query);
+        webkit_web_view_load_uri(web_view, url.c_str());
+    } else if (response_id == GTK_RESPONSE_YES) {
+        settings_set_search_engine("duckduckgo");
+        save_settings();
+        refresh_search_placeholder();
+        if (query && *query && web_view) {
+            std::string url = search_url_for_engine(query, "duckduckgo");
+            webkit_web_view_load_uri(web_view, url.c_str());
+        }
+    }
+    gtk_widget_hide(GTK_WIDGET(bar));
+}
+
+void show_google_fallback_notice(const gchar *query) {
+    if (!browser.search_notice)
+        return;
+
+    GtkWidget *content = gtk_info_bar_get_content_area(GTK_INFO_BAR(browser.search_notice));
+    GList *children = gtk_container_get_children(GTK_CONTAINER(content));
+    GtkWidget *label = children ? GTK_WIDGET(children->data) : nullptr;
+    if (label) {
+        gchar *text = g_strdup_printf("Google blocked this search, so Kite loaded DuckDuckGo results for \"%s\".",
+                                      query && *query ? query : "your query");
+        gtk_label_set_text(GTK_LABEL(label), text);
+        g_free(text);
+    }
+    g_list_free(children);
+
+    g_object_set_data_full(G_OBJECT(browser.search_notice), "kite_query", g_strdup(query ? query : ""), g_free);
+    gtk_info_bar_set_message_type(GTK_INFO_BAR(browser.search_notice), GTK_MESSAGE_WARNING);
+    gtk_widget_show_all(browser.search_notice);
+}
+
+void refresh_search_placeholder() {
+    if (!browser.url_entry)
+        return;
+    gchar *placeholder =
+        g_strdup_printf("Search with %s or type a URL", search_engine_display_name(settings_search_engine()));
+    gtk_entry_set_placeholder_text(GTK_ENTRY(browser.url_entry), placeholder);
+    g_free(placeholder);
+}
+
+static void split_view_sync_button();
+static gboolean center_split_pane(gpointer data);
+static void on_split_toggled(GtkToggleButton *button, gpointer user_data);
+
+// Refresh every toolbar element that reflects the focused tab. Keeping this in
+// one place means the split panes can hand focus back and forth without
+// duplicating the notebook switch logic.
+static void update_active_view_ui(WebKitWebView *web_view) {
+    if (!web_view)
+        return;
+
+    const gchar *uri = webkit_web_view_get_uri(web_view);
+    set_url_entry_text(uri);
+    clear_omnibox_completions();
+
+    if (browser.url_entry) {
+        GtkStyleContext *context = gtk_widget_get_style_context(browser.url_entry);
+        if (webview_is_incognito(web_view))
+            gtk_style_context_add_class(context, "incognito-mode");
+        else
+            gtk_style_context_remove_class(context, "incognito-mode");
+    }
+
+    update_reload_button(web_view);
+    update_progress(web_view);
+    update_window_title(web_view);
+    update_bookmark_button(web_view);
+    update_privacy_button(web_view);
+    sync_find_bar(web_view);
+}
+
+static void split_view_sync_button() {
+    if (!browser.btn_split)
+        return;
+
+    bool active = split_view_active();
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(browser.btn_split)) != active) {
+        g_signal_handlers_block_by_func(browser.btn_split, (gpointer)on_split_toggled, nullptr);
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(browser.btn_split), active);
+        g_signal_handlers_unblock_by_func(browser.btn_split, (gpointer)on_split_toggled, nullptr);
+    }
+    gtk_widget_set_tooltip_text(browser.btn_split,
+                                active ? "Close split view (Ctrl+\\)" : "Split view (Ctrl+\\)");
+}
+
+static gboolean center_split_pane(gpointer data) {
+    (void)data;
+    if (!browser.split_pane || !split_view_active())
+        return G_SOURCE_REMOVE;
+    gint width = gtk_widget_get_allocated_width(browser.split_pane);
+    if (width > 0)
+        gtk_paned_set_position(GTK_PANED(browser.split_pane), width / 2);
+    return G_SOURCE_REMOVE;
+}
+
+// Move a tab (web view plus its tab label/buttons) between the notebooks.
+// GTK owns the page while it is attached, so hold temporary references across
+// remove/insert to keep the widget alive. The caller decides whether the moved
+// page becomes current in the destination notebook.
+static void move_notebook_page(GtkNotebook *from, GtkNotebook *to, WebKitWebView *web_view, gint position,
+                               bool select) {
+    if (!from || !to || !web_view)
+        return;
+    GtkWidget *child = GTK_WIDGET(web_view);
+    gint page = gtk_notebook_page_num(from, child);
+    if (page < 0)
+        return;
+
+    GtkWidget *tab_label = gtk_notebook_get_tab_label(from, child);
+    g_object_ref(child);
+    if (tab_label)
+        g_object_ref(tab_label);
+
+    gtk_notebook_remove_page(from, page);
+    gint index = position < 0 ? gtk_notebook_append_page(to, child, tab_label)
+                              : gtk_notebook_insert_page(to, child, tab_label, position);
+    gtk_notebook_set_tab_reorderable(to, child, to == GTK_NOTEBOOK(browser.notebook));
+    if (select)
+        gtk_notebook_set_current_page(to, index);
+
+    if (tab_label)
+        g_object_unref(tab_label);
+    g_object_unref(child);
+}
+
+static void deactivate_split_view() {
+    if (!browser.split_notebook)
+        return;
+    gtk_widget_hide(browser.split_notebook);
+    browser.split_focus_secondary = false;
+    split_view_sync_button();
+}
+
+static void move_all_split_pages_to_main(gint insert_at) {
+    if (!browser.notebook || !browser.split_notebook)
+        return;
+    GtkNotebook *main_notebook = GTK_NOTEBOOK(browser.notebook);
+    GtkNotebook *split_notebook = GTK_NOTEBOOK(browser.split_notebook);
+    if (insert_at < 0)
+        insert_at = gtk_notebook_get_n_pages(main_notebook);
+
+    while (gtk_notebook_get_n_pages(split_notebook) > 0) {
+        GtkWidget *child = gtk_notebook_get_nth_page(split_notebook, 0);
+        if (!child || !WEBKIT_IS_WEB_VIEW(child)) {
+            gtk_notebook_remove_page(split_notebook, 0);
+            continue;
+        }
+        move_notebook_page(split_notebook, main_notebook, WEBKIT_WEB_VIEW(child), insert_at++, false);
+    }
+}
+
+void toggle_split_view() {
+    if (!browser.notebook || !browser.split_notebook)
+        return;
+
+    if (split_view_active()) {
+        GtkNotebook *main_notebook = GTK_NOTEBOOK(browser.notebook);
+        gint insert_at = gtk_notebook_get_current_page(main_notebook) + 1;
+
+        // Hide first so the toolbar button and get_active_webview() already see
+        // a single pane while the tab moves back.
+        deactivate_split_view();
+        move_all_split_pages_to_main(insert_at);
+
+        update_active_view_ui(get_active_webview());
+        save_browser_session();
+        return;
+    }
+
+    GtkNotebook *main_notebook = GTK_NOTEBOOK(browser.notebook);
+    if (gtk_notebook_get_n_pages(main_notebook) == 0)
+        create_new_tab(KITE_NEWTAB_URL);
+
+    WebKitWebView *secondary = nullptr;
+    if (gtk_notebook_get_n_pages(main_notebook) < 2) {
+        // A single tab gets a fresh companion instead of duplicating the page.
+        create_new_tab(KITE_NEWTAB_URL);
+        secondary = get_active_webview();
+    } else {
+        gint current = gtk_notebook_get_current_page(main_notebook);
+        gint pages = gtk_notebook_get_n_pages(main_notebook);
+        GtkWidget *child = gtk_notebook_get_nth_page(main_notebook, (current + 1) % pages);
+        if (child && WEBKIT_IS_WEB_VIEW(child))
+            secondary = WEBKIT_WEB_VIEW(child);
+    }
+    if (!secondary) {
+        split_view_sync_button();
+        return;
+    }
+
+    move_notebook_page(main_notebook, GTK_NOTEBOOK(browser.split_notebook), secondary, -1, true);
+    gtk_widget_show(browser.split_notebook);
+    gtk_widget_show(browser.split_pane);
+    g_idle_add(center_split_pane, nullptr);
+
+    // The tab the user came from keeps focus and the address bar.
+    browser.split_focus_secondary = false;
+    split_view_sync_button();
+    update_active_view_ui(get_active_webview());
+    save_browser_session();
+}
+
+static void on_split_toggled(GtkToggleButton *button, gpointer user_data) {
+    (void)user_data;
+    bool want_active = gtk_toggle_button_get_active(button);
+    if (want_active == split_view_active())
+        return;
+    toggle_split_view();
+}
+
+bool activate_webview(WebKitWebView *web_view) {
+    GtkNotebook *notebook = notebook_for_webview(web_view);
+    if (!notebook)
+        return false;
+
+    gint page = gtk_notebook_page_num(notebook, GTK_WIDGET(web_view));
+    if (page < 0)
+        return false;
+
+    gtk_notebook_set_current_page(notebook, page);
+    browser.split_focus_secondary =
+        split_view_active() && notebook == GTK_NOTEBOOK(browser.split_notebook);
+    update_active_view_ui(web_view);
+    gtk_widget_grab_focus(GTK_WIDGET(web_view));
+    return true;
+}
+
+void split_view_note_focus(WebKitWebView *web_view) {
+    if (!web_view || !split_view_active())
+        return;
+    GtkNotebook *notebook = notebook_for_webview(web_view);
+    if (!notebook)
+        return;
+    browser.split_focus_secondary = notebook == GTK_NOTEBOOK(browser.split_notebook);
+    update_active_view_ui(web_view);
+}
+
+void split_view_after_tab_removed(GtkNotebook *notebook) {
+    if (!browser.notebook || !browser.split_notebook)
+        return;
+
+    GtkNotebook *main_notebook = GTK_NOTEBOOK(browser.notebook);
+    GtkNotebook *split_notebook = GTK_NOTEBOOK(browser.split_notebook);
+
+    if (notebook == split_notebook) {
+        if (gtk_notebook_get_n_pages(split_notebook) == 0) {
+            deactivate_split_view();
+            update_active_view_ui(get_active_webview());
+        }
+        return;
+    }
+
+    if (notebook == main_notebook && gtk_notebook_get_n_pages(main_notebook) == 0) {
+        if (split_view_active()) {
+            deactivate_split_view();
+            move_all_split_pages_to_main(0);
+            update_active_view_ui(get_active_webview());
+        }
+    }
+}
+
+static void cycle_active_tab(bool backward) {
+    std::vector<WebKitWebView *> views;
+    auto collect = [&](GtkWidget *notebook_widget) {
+        if (!notebook_widget)
+            return;
+        gint pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(notebook_widget));
+        for (gint i = 0; i < pages; i++) {
+            GtkWidget *child = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_widget), i);
+            if (child && WEBKIT_IS_WEB_VIEW(child))
+                views.push_back(WEBKIT_WEB_VIEW(child));
+        }
+    };
+    collect(browser.notebook);
+    if (split_view_active())
+        collect(browser.split_notebook);
+    if (views.empty())
+        return;
+
+    WebKitWebView *active = get_active_webview();
+    auto found = std::find(views.begin(), views.end(), active);
+    size_t index = found == views.end() ? 0 : (size_t)std::distance(views.begin(), found);
+    size_t next = backward ? (index + views.size() - 1) % views.size() : (index + 1) % views.size();
+    activate_webview(views[next]);
 }
 
 static void on_url_entry_changed(GtkEditable *editable, gpointer user_data) {
@@ -165,20 +512,30 @@ static void on_url_entry_changed(GtkEditable *editable, gpointer user_data) {
     if (!completion_store)
         return;
 
-    if (webview_is_incognito(get_active_webview())) {
-        clear_omnibox_completions();
-        return;
-    }
-
     const gchar *text = gtk_entry_get_text(GTK_ENTRY(browser.url_entry));
     gtk_list_store_clear(completion_store);
     if (!text || !*text)
         return;
 
-    std::vector<HistoryEntry> matches = history_completions(text, 12);
+    WebKitWebView *web_view = get_active_webview();
+    bool incognito = webview_is_incognito(web_view) != FALSE;
+    std::vector<OmniboxSuggestion> matches = omnibox_suggestions(text, !incognito, 12);
     for (const auto &entry : matches) {
         GtkTreeIter iter;
-        std::string display = entry.title.empty() ? entry.url : entry.title + " \xE2\x80\x94 " + entry.url;
+        std::string display;
+        if (entry.kind == OmniboxKind::Search || entry.kind == OmniboxKind::Open) {
+            display = entry.title;
+        } else {
+            display = entry.title;
+            if (entry.kind == OmniboxKind::Pin)
+                display = "Pinned · " + display;
+            else if (entry.kind == OmniboxKind::Bookmark)
+                display = "Bookmark · " + display;
+            else if (entry.kind == OmniboxKind::Page)
+                display = "Kite · " + display;
+            if (!entry.url.empty() && entry.url != entry.title)
+                display += " \xE2\x80\x94 " + entry.url;
+        }
         gtk_list_store_append(completion_store, &iter);
         gtk_list_store_set(completion_store, &iter, 0, display.c_str(), 1, entry.url.c_str(), -1);
     }
@@ -247,10 +604,29 @@ void update_reload_button(WebKitWebView *web_view) {
 void update_window_title(WebKitWebView *web_view) {
     if (!browser.main_window)
         return;
-    const gchar *title = web_view ? webkit_web_view_get_title(web_view) : nullptr;
-    if (!title || !*title)
-        title = web_view ? webkit_web_view_get_uri(web_view) : nullptr;
-    gtk_window_set_title(GTK_WINDOW(browser.main_window), (title && *title) ? title : "Kite Browser");
+
+    auto title_for = [](WebKitWebView *view) -> std::string {
+        if (!view)
+            return "";
+        const gchar *title = webkit_web_view_get_title(view);
+        if (!title || !*title)
+            title = webkit_web_view_get_uri(view);
+        return title && *title ? title : "";
+    };
+
+    std::string title;
+    if (split_view_active()) {
+        std::string left = title_for(notebook_current_view(browser.notebook));
+        std::string right = title_for(notebook_current_view(browser.split_notebook));
+        if (!left.empty() && !right.empty())
+            title = left + "  |  " + right;
+        else
+            title = left.empty() ? right : left;
+    } else {
+        title = title_for(web_view ? web_view : get_active_webview());
+    }
+
+    gtk_window_set_title(GTK_WINDOW(browser.main_window), title.empty() ? "Kite Browser" : title.c_str());
 }
 
 void update_progress(WebKitWebView *web_view) {
@@ -327,6 +703,14 @@ static void on_extensions_clicked(GtkButton *btn, gpointer user_data) {
         create_new_tab(KITE_EXTENSIONS_URL);
 }
 
+static void on_profile_clicked(GtkButton *btn, gpointer user_data) {
+    WebKitWebView *web_view = get_active_webview();
+    if (web_view)
+        webkit_web_view_load_uri(web_view, KITE_PROFILES_URL);
+    else
+        create_new_tab(KITE_PROFILES_URL);
+}
+
 static void on_bookmark_toggled(GtkToggleButton *button, gpointer user_data) {
     if (browser.updating_bookmark_button)
         return;
@@ -380,27 +764,17 @@ static void on_page_reordered(GtkNotebook *notebook, GtkWidget *child, guint new
 }
 
 static void on_tab_switched(GtkNotebook *nb, GtkWidget *page, guint page_num, gpointer user_data) {
+    (void)nb;
+    (void)page_num;
     if (!page || !WEBKIT_IS_WEB_VIEW(page))
         return;
     WebKitWebView *web_view = WEBKIT_WEB_VIEW(page);
 
-    const gchar *uri = webkit_web_view_get_uri(web_view);
-    set_url_entry_text(uri);
-    clear_omnibox_completions();
-
-    GtkStyleContext *context = gtk_widget_get_style_context(browser.url_entry);
-    if (webview_is_incognito(web_view)) {
-        gtk_style_context_add_class(context, "incognito-mode");
-    } else {
-        gtk_style_context_remove_class(context, "incognito-mode");
-    }
-
-    update_reload_button(web_view);
-    update_progress(web_view);
-    update_window_title(web_view);
-    update_bookmark_button(web_view);
-    update_privacy_button(web_view);
-    sync_find_bar(web_view);
+    bool secondary = GPOINTER_TO_INT(user_data) == 1;
+    browser.split_focus_secondary = split_view_active() && secondary;
+    if (browser.search_notice)
+        gtk_widget_hide(browser.search_notice);
+    update_active_view_ui(web_view);
     save_browser_session();
 }
 
@@ -428,16 +802,17 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     }
 
     if (event->state & GDK_CONTROL_MASK) {
-        // Ctrl+Tab / Ctrl+Shift+Tab — cycle tabs
+        // Ctrl+Tab / Ctrl+Shift+Tab — cycle every tab, including the split pane.
         if (event->keyval == GDK_KEY_Tab || event->keyval == GDK_KEY_ISO_Left_Tab) {
-            gint n = gtk_notebook_get_n_pages(GTK_NOTEBOOK(browser.notebook));
-            if (n > 0) {
-                gint cur = gtk_notebook_get_current_page(GTK_NOTEBOOK(browser.notebook));
-                gboolean backward =
-                    (event->state & GDK_SHIFT_MASK) || event->keyval == GDK_KEY_ISO_Left_Tab;
-                gint next = backward ? (cur - 1 + n) % n : (cur + 1) % n;
-                gtk_notebook_set_current_page(GTK_NOTEBOOK(browser.notebook), next);
-            }
+            gboolean backward =
+                (event->state & GDK_SHIFT_MASK) || event->keyval == GDK_KEY_ISO_Left_Tab;
+            cycle_active_tab(backward);
+            return TRUE;
+        }
+
+        // Ctrl+\ — toggle side-by-side split view.
+        if (event->keyval == GDK_KEY_backslash) {
+            toggle_split_view();
             return TRUE;
         }
 
@@ -526,7 +901,7 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     return FALSE;
 }
 
-void create_browser_window() {
+void create_browser_window(const gchar *startup_url) {
     browser.main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_style_context_add_class(gtk_widget_get_style_context(browser.main_window), "kite-window");
     if (settings_dark_mode())
@@ -550,8 +925,12 @@ void create_browser_window() {
     gtk_button_set_always_show_image(GTK_BUTTON(browser.btn_reload), TRUE);
     GtkWidget *btn_home = gtk_button_new_from_icon_name("go-home-symbolic", GTK_ICON_SIZE_BUTTON);
     GtkWidget *btn_new_tab = gtk_button_new_from_icon_name("list-add-symbolic", GTK_ICON_SIZE_BUTTON);
+    browser.btn_split = gtk_toggle_button_new();
+    gtk_button_set_image(GTK_BUTTON(browser.btn_split),
+                         gtk_image_new_from_icon_name("view-dual-symbolic", GTK_ICON_SIZE_BUTTON));
     GtkWidget *btn_extensions =
         gtk_button_new_from_icon_name("applications-other-symbolic", GTK_ICON_SIZE_BUTTON);
+    GtkWidget *btn_profile = gtk_button_new_from_icon_name("avatar-default-symbolic", GTK_ICON_SIZE_BUTTON);
     browser.btn_bookmark = gtk_toggle_button_new();
     gtk_button_set_image(GTK_BUTTON(browser.btn_bookmark),
                          gtk_image_new_from_icon_name("non-starred-symbolic", GTK_ICON_SIZE_BUTTON));
@@ -563,7 +942,9 @@ void create_browser_window() {
     gtk_widget_set_tooltip_text(browser.btn_reload, "Reload");
     gtk_widget_set_tooltip_text(btn_home, "Home");
     gtk_widget_set_tooltip_text(btn_new_tab, "New tab (Ctrl+T)");
+    gtk_widget_set_tooltip_text(browser.btn_split, "Split view (Ctrl+\\)");
     gtk_widget_set_tooltip_text(btn_extensions, "Extensions");
+    gtk_widget_set_tooltip_text(btn_profile, (std::string("Profiles — ") + profile_current_name()).c_str());
     gtk_widget_set_tooltip_text(browser.btn_bookmark, "Bookmark this page (Ctrl+D)");
     gtk_widget_set_tooltip_text(browser.btn_dark, "Toggle Dark Mode (F9 / Ctrl+Shift+D)");
 
@@ -572,7 +953,9 @@ void create_browser_window() {
     g_signal_connect(browser.btn_reload, "clicked", G_CALLBACK(on_reload_clicked), NULL);
     g_signal_connect(btn_home, "clicked", G_CALLBACK(on_home_clicked), NULL);
     g_signal_connect(btn_new_tab, "clicked", G_CALLBACK(on_new_tab_clicked), NULL);
+    g_signal_connect(browser.btn_split, "toggled", G_CALLBACK(on_split_toggled), NULL);
     g_signal_connect(btn_extensions, "clicked", G_CALLBACK(on_extensions_clicked), NULL);
+    g_signal_connect(btn_profile, "clicked", G_CALLBACK(on_profile_clicked), NULL);
     g_signal_connect(browser.btn_bookmark, "toggled", G_CALLBACK(on_bookmark_toggled), NULL);
     g_signal_connect(browser.btn_dark, "toggled", G_CALLBACK(on_dark_mode_toggled), NULL);
 
@@ -581,12 +964,14 @@ void create_browser_window() {
     gtk_box_pack_start(GTK_BOX(toolbar), browser.btn_reload, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), btn_home, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), btn_new_tab, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(toolbar), browser.btn_split, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), btn_extensions, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(toolbar), btn_profile, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), browser.btn_bookmark, FALSE, FALSE, 0);
 
     browser.url_entry = gtk_entry_new();
     gtk_style_context_add_class(gtk_widget_get_style_context(browser.url_entry), "kite-omnibox");
-    gtk_entry_set_placeholder_text(GTK_ENTRY(browser.url_entry), "Search with Google or type a URL");
+    refresh_search_placeholder();
     gtk_box_pack_start(GTK_BOX(toolbar), browser.url_entry, TRUE, TRUE, 2);
     g_signal_connect(browser.url_entry, "activate", G_CALLBACK(on_url_activate), NULL);
     g_signal_connect(browser.url_entry, "changed", G_CALLBACK(on_url_entry_changed), NULL);
@@ -601,18 +986,46 @@ void create_browser_window() {
         gtk_box_pack_start(GTK_BOX(toolbar), btn_downloads, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(toolbar), browser.btn_dark, FALSE, FALSE, 0);
 
+    browser.search_notice = gtk_info_bar_new();
+    gtk_info_bar_set_message_type(GTK_INFO_BAR(browser.search_notice), GTK_MESSAGE_WARNING);
+    GtkWidget *notice_content = gtk_info_bar_get_content_area(GTK_INFO_BAR(browser.search_notice));
+    GtkWidget *notice_label = gtk_label_new("");
+    gtk_label_set_line_wrap(GTK_LABEL(notice_label), TRUE);
+    gtk_label_set_xalign(GTK_LABEL(notice_label), 0.0);
+    gtk_container_add(GTK_CONTAINER(notice_content), notice_label);
+    gtk_info_bar_add_button(GTK_INFO_BAR(browser.search_notice), "Retry Google", GTK_RESPONSE_APPLY);
+    gtk_info_bar_add_button(GTK_INFO_BAR(browser.search_notice), "Always use DuckDuckGo", GTK_RESPONSE_YES);
+    gtk_info_bar_add_button(GTK_INFO_BAR(browser.search_notice), "Dismiss", GTK_RESPONSE_CLOSE);
+    g_signal_connect(browser.search_notice, "response", G_CALLBACK(on_search_notice_response), NULL);
+    gtk_box_pack_start(GTK_BOX(vbox), browser.search_notice, FALSE, FALSE, 0);
+
     browser.progress_bar = gtk_progress_bar_new();
     gtk_style_context_add_class(gtk_widget_get_style_context(browser.progress_bar), "kite-progress");
     gtk_progress_bar_set_show_text(GTK_PROGRESS_BAR(browser.progress_bar), FALSE);
     gtk_widget_set_size_request(browser.progress_bar, -1, 3);
     gtk_box_pack_start(GTK_BOX(vbox), browser.progress_bar, FALSE, FALSE, 0);
 
+    browser.split_pane = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    gtk_style_context_add_class(gtk_widget_get_style_context(browser.split_pane), "kite-split-pane");
+    gtk_paned_set_wide_handle(GTK_PANED(browser.split_pane), FALSE);
+    gtk_box_pack_start(GTK_BOX(vbox), browser.split_pane, TRUE, TRUE, 0);
+
     browser.notebook = gtk_notebook_new();
     gtk_style_context_add_class(gtk_widget_get_style_context(browser.notebook), "kite-notebook");
     gtk_notebook_set_scrollable(GTK_NOTEBOOK(browser.notebook), TRUE);
-    gtk_box_pack_start(GTK_BOX(vbox), browser.notebook, TRUE, TRUE, 0);
-    g_signal_connect(browser.notebook, "switch-page", G_CALLBACK(on_tab_switched), NULL);
+    gtk_paned_pack1(GTK_PANED(browser.split_pane), browser.notebook, TRUE, FALSE);
+    g_signal_connect(browser.notebook, "switch-page", G_CALLBACK(on_tab_switched), GINT_TO_POINTER(0));
     g_signal_connect(browser.notebook, "page-reordered", G_CALLBACK(on_page_reordered), NULL);
+
+    browser.split_notebook = gtk_notebook_new();
+    gtk_style_context_add_class(gtk_widget_get_style_context(browser.split_notebook), "kite-notebook");
+    gtk_style_context_add_class(gtk_widget_get_style_context(browser.split_notebook), "kite-split-notebook");
+    gtk_notebook_set_scrollable(GTK_NOTEBOOK(browser.split_notebook), TRUE);
+    gtk_widget_set_no_show_all(browser.split_notebook, TRUE);
+    gtk_paned_pack2(GTK_PANED(browser.split_pane), browser.split_notebook, TRUE, FALSE);
+    g_signal_connect(browser.split_notebook, "switch-page", G_CALLBACK(on_tab_switched),
+                     GINT_TO_POINTER(1));
+    g_signal_connect(browser.split_notebook, "page-reordered", G_CALLBACK(on_page_reordered), NULL);
 
     GtkWidget *find_box = create_find_bar();
     gtk_box_pack_start(GTK_BOX(vbox), find_box, FALSE, FALSE, 2);
@@ -628,7 +1041,8 @@ void create_browser_window() {
     // Always open the Kite start page. When a session was restored it becomes
     // the first, active tab, so the browser opens with a proper start page
     // instead of dropping straight into the last visited site.
-    create_new_tab(KITE_NEWTAB_URL);
+    std::string initial_url = startup_url && *startup_url ? resolve_url_input(startup_url) : KITE_NEWTAB_URL;
+    create_new_tab(initial_url.c_str());
     WebKitWebView *start_view = get_active_webview();
     if (start_view) {
         g_object_set_data(G_OBJECT(start_view), "kite_startup_tab", GINT_TO_POINTER(1));
@@ -642,7 +1056,9 @@ void create_browser_window() {
     browser.restoring_session = false;
 
     gtk_widget_show_all(browser.main_window);
+    gtk_widget_hide(browser.split_notebook);
     gtk_widget_hide(browser.find_box);
     gtk_widget_hide(browser.progress_bar);
+    gtk_widget_hide(browser.search_notice);
     focus_url_bar();
 }

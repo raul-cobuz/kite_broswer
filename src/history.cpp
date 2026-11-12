@@ -8,6 +8,7 @@
 #include <unordered_set>
 
 #include "url_utils.h"
+#include "profile.h"
 
 static sqlite3 *db = nullptr;
 static gchar *db_path = nullptr;
@@ -49,7 +50,7 @@ bool history_init(const gchar *database_path) {
     if (database_path && *database_path)
         db_path = g_strdup(database_path);
     else
-        db_path = g_build_filename(g_get_user_data_dir(), "kite", "kite.db", NULL);
+        db_path = g_build_filename(profile_data_dir(), "kite.db", nullptr);
 
     gchar *dir = g_path_get_dirname(db_path);
     g_mkdir_with_parents(dir, 0700);
@@ -242,6 +243,33 @@ void history_delete_url(const gchar *url) {
     if (sqlite3_prepare_v2(db, "DELETE FROM history WHERE url=?1", -1, &stmt, nullptr) != SQLITE_OK)
         return;
     sqlite3_bind_text(stmt, 1, url, -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+void history_import_entry(const gchar *url, const gchar *title, gint64 last_visit, int visit_count) {
+    if (!db || !url || !*url)
+        return;
+    if (g_str_has_prefix(url, "kite:") || g_str_has_prefix(url, "about:"))
+        return;
+
+    static const char *sql =
+        "INSERT INTO history(url,title,host,last_visit,visit_count) VALUES(?1,?2,?3,?4,?5) "
+        "ON CONFLICT(url) DO UPDATE SET "
+        "title=CASE WHEN excluded.title<>'' THEN excluded.title ELSE history.title END,"
+        "host=excluded.host,"
+        "last_visit=MAX(history.last_visit,excluded.last_visit),"
+        "visit_count=MAX(history.visit_count,excluded.visit_count)";
+    sqlite3_stmt *stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+        return;
+
+    std::string host = url_host(url);
+    sqlite3_bind_text(stmt, 1, url, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, title ? title : "", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, host.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, last_visit > 0 ? last_visit : g_get_real_time());
+    sqlite3_bind_int(stmt, 5, visit_count > 0 ? visit_count : 1);
     sqlite3_step(stmt);
     sqlite3_finalize(stmt);
 }

@@ -358,8 +358,9 @@ GtkWidget *create_downloads_button() {
     return downloads_button;
 }
 
-void init_downloads() {
-    WebKitWebContext *context = webkit_web_context_get_default();
+void init_downloads(WebKitWebContext *context) {
+    if (!context)
+        context = webkit_web_context_get_default();
     g_printerr("[Kite DEBUG] init_downloads context=%p\n", (void *)context);
     g_signal_connect(context, "download-started", G_CALLBACK(on_download_started), nullptr);
 }

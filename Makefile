@@ -17,7 +17,7 @@ debug:
 
 test:
 	cmake -S . -B $(RELEASE_DIR) -DCMAKE_BUILD_TYPE=Release
-	cmake --build $(RELEASE_DIR) --target test_url_utils test_settings test_history test_session test_adblock_rules --parallel $(JOBS)
+	cmake --build $(RELEASE_DIR) --target test_url_utils test_settings test_history test_session test_adblock_rules test_profile test_omnibox test_sync --parallel $(JOBS)
 	ctest --test-dir $(RELEASE_DIR) --output-on-failure
 
 filters:

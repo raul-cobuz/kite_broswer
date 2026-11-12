@@ -4,6 +4,8 @@
 
 #include <cmath>
 
+#include "profile.h"
+
 static GKeyFile *settings = nullptr;
 static gchar *settings_file = nullptr;
 static GHashTable *permission_decisions = nullptr;
@@ -11,17 +13,33 @@ static GHashTable *site_zoom_levels = nullptr;
 static GHashTable *adblock_exceptions = nullptr;
 static bool dark_mode = false;
 static gchar *homepage = nullptr;
+static gchar *search_engine = nullptr;
+static bool google_fallback = true;
 static gchar *download_directory = nullptr;
 static bool restore_session = true;
 static bool block_ads = true;
 static bool strip_tracking_params = true;
 static bool clear_on_exit = false;
+static gchar *sync_folder = nullptr;
+static bool sync_on_startup = true;
+static bool sync_settings = true;
 
 static gchar *default_download_directory() {
     const gchar *special = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
     if (special && *special)
         return g_strdup(special);
     return g_build_filename(g_get_home_dir(), "Downloads", NULL);
+}
+
+static const char *normalize_search_engine(const gchar *engine) {
+    static const char *const allowed[] = {"google", "duckduckgo", "startpage", "brave"};
+    if (engine) {
+        for (const char *candidate : allowed) {
+            if (g_ascii_strcasecmp(engine, candidate) == 0)
+                return candidate;
+        }
+    }
+    return "google";
 }
 
 static gchar *string_setting(const gchar *group, const gchar *key, const gchar *fallback) {
@@ -65,20 +83,27 @@ void load_settings() {
         g_key_file_free(settings);
     g_free(settings_file);
     g_free(homepage);
+    g_free(search_engine);
     g_free(download_directory);
+    g_free(sync_folder);
 
     permission_decisions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     site_zoom_levels = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     adblock_exceptions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     settings = g_key_file_new();
-    settings_file = g_build_filename(g_get_user_config_dir(), "kite", "settings.ini", NULL);
+    settings_file = g_build_filename(profile_config_dir(), "settings.ini", NULL);
     dark_mode = false;
     homepage = g_strdup("kite://newtab");
+    search_engine = g_strdup("google");
+    google_fallback = true;
     download_directory = default_download_directory();
     restore_session = true;
     block_ads = true;
     strip_tracking_params = true;
     clear_on_exit = false;
+    sync_folder = g_strdup("");
+    sync_on_startup = true;
+    sync_settings = true;
 
     GError *error = nullptr;
     if (!g_key_file_load_from_file(settings, settings_file, G_KEY_FILE_NONE, &error)) {
@@ -111,6 +136,18 @@ void load_settings() {
     g_free(homepage);
     homepage = string_setting("general", "homepage", "kite://newtab");
 
+    g_free(search_engine);
+    gchar *configured_engine = string_setting("search", "engine", "google");
+    search_engine = g_strdup(normalize_search_engine(configured_engine));
+    g_free(configured_engine);
+
+    gboolean fallback = g_key_file_get_boolean(settings, "search", "google_fallback", &error);
+    if (error) {
+        g_clear_error(&error);
+    } else {
+        google_fallback = fallback;
+    }
+
     g_free(download_directory);
     gchar *default_dir = default_download_directory();
     download_directory = string_setting("downloads", "directory", default_dir);
@@ -142,6 +179,23 @@ void load_settings() {
         g_clear_error(&error);
     } else {
         clear_on_exit = clear_data;
+    }
+
+    g_free(sync_folder);
+    sync_folder = string_setting("sync", "folder", "");
+
+    gboolean startup_sync = g_key_file_get_boolean(settings, "sync", "on_startup", &error);
+    if (error) {
+        g_clear_error(&error);
+    } else {
+        sync_on_startup = startup_sync;
+    }
+
+    gboolean sync_settings_enabled = g_key_file_get_boolean(settings, "sync", "include_settings", &error);
+    if (error) {
+        g_clear_error(&error);
+    } else {
+        sync_settings = sync_settings_enabled;
     }
 
     gchar *exceptions = g_key_file_get_string(settings, "privacy", "adblock_exceptions", nullptr);
@@ -177,6 +231,8 @@ void save_settings() {
 
     g_key_file_set_boolean(settings, "appearance", "dark_mode", dark_mode);
     g_key_file_set_string(settings, "general", "homepage", settings_homepage());
+    g_key_file_set_string(settings, "search", "engine", settings_search_engine());
+    g_key_file_set_boolean(settings, "search", "google_fallback", google_fallback);
     g_key_file_set_boolean(settings, "session", "restore", restore_session);
     g_key_file_set_string(settings, "downloads", "directory", settings_download_directory());
     // Downloads always prompt now; drop the obsolete automatic-save flag.
@@ -185,6 +241,10 @@ void save_settings() {
     g_key_file_set_boolean(settings, "privacy", "block_ads", block_ads);
     g_key_file_set_boolean(settings, "privacy", "strip_tracking_params", strip_tracking_params);
     g_key_file_set_boolean(settings, "privacy", "clear_on_exit", clear_on_exit);
+
+    g_key_file_set_string(settings, "sync", "folder", settings_sync_folder());
+    g_key_file_set_boolean(settings, "sync", "on_startup", sync_on_startup);
+    g_key_file_set_boolean(settings, "sync", "include_settings", sync_settings);
 
     g_key_file_remove_key(settings, "privacy", "adblock_exceptions", nullptr);
     if (adblock_exceptions && g_hash_table_size(adblock_exceptions) > 0) {
@@ -284,6 +344,23 @@ void settings_set_homepage(const gchar *url) {
         return;
     g_free(homepage);
     homepage = g_strdup(url);
+}
+
+const gchar *settings_search_engine() {
+    return search_engine ? search_engine : "google";
+}
+
+void settings_set_search_engine(const gchar *engine) {
+    g_free(search_engine);
+    search_engine = g_strdup(normalize_search_engine(engine));
+}
+
+bool settings_google_fallback() {
+    return google_fallback;
+}
+
+void settings_set_google_fallback(bool enabled) {
+    google_fallback = enabled;
 }
 
 bool settings_restore_session() {
@@ -398,4 +475,29 @@ bool settings_clear_on_exit() {
 
 void settings_set_clear_on_exit(bool enabled) {
     clear_on_exit = enabled;
+}
+
+const gchar *settings_sync_folder() {
+    return sync_folder ? sync_folder : "";
+}
+
+void settings_set_sync_folder(const gchar *path) {
+    g_free(sync_folder);
+    sync_folder = g_strdup(path ? path : "");
+}
+
+bool settings_sync_on_startup() {
+    return sync_on_startup;
+}
+
+void settings_set_sync_on_startup(bool enabled) {
+    sync_on_startup = enabled;
+}
+
+bool settings_sync_settings() {
+    return sync_settings;
+}
+
+void settings_set_sync_settings(bool enabled) {
+    sync_settings = enabled;
 }

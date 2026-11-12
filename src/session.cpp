@@ -4,8 +4,10 @@
 
 #include <algorithm>
 
+#include "profile.h"
+
 static gchar *session_path() {
-    return g_build_filename(g_get_user_config_dir(), "kite", "session.ini", NULL);
+    return g_build_filename(profile_config_dir(), "session.ini", nullptr);
 }
 
 bool session_load(SessionState *state) {

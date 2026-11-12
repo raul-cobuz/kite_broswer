@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "adblock_rules.h"
+#include "profile.h"
 #include "settings.h"
 #include "youtube_adblock.h"
 
@@ -61,10 +62,17 @@ static gchar *find_filters_json_path() {
     if (g_file_test("filters.json", G_FILE_TEST_IS_REGULAR))
         return g_strdup("filters.json");
 
-    gchar *config_path = g_build_filename(g_get_user_config_dir(), "kite", "filters.json", NULL);
+    gchar *config_path = g_build_filename(profile_config_dir(), "filters.json", nullptr);
     if (g_file_test(config_path, G_FILE_TEST_IS_REGULAR))
         return config_path;
     g_free(config_path);
+
+    if (!profile_is_default()) {
+        gchar *legacy_path = g_build_filename(g_get_user_config_dir(), "kite", "filters.json", nullptr);
+        if (g_file_test(legacy_path, G_FILE_TEST_IS_REGULAR))
+            return legacy_path;
+        g_free(legacy_path);
+    }
 
     return nullptr;
 }
@@ -183,7 +191,7 @@ void init_adblocker() {
     adblock_enabled = settings_block_ads();
     sync_youtube_adblock();
 
-    gchar *filter_cache_dir = g_build_filename(g_get_user_cache_dir(), "kite", "adblock", NULL);
+    gchar *filter_cache_dir = g_build_filename(profile_cache_dir(), "adblock", nullptr);
     g_mkdir_with_parents(filter_cache_dir, 0700);
     filter_store = webkit_user_content_filter_store_new(filter_cache_dir);
     g_free(filter_cache_dir);

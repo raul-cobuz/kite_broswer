@@ -36,8 +36,145 @@ static std::string escape_query(const std::string &text) {
     return result;
 }
 
-static std::string search_url(const std::string &text) {
+static std::string lower_ascii(const std::string &text) {
+    gchar *lower = g_ascii_strdown(text.c_str(), -1);
+    std::string result = lower ? lower : "";
+    g_free(lower);
+    return result;
+}
+
+std::string google_search_url(const std::string &text) {
     return "https://www.google.com/search?q=" + escape_query(text);
+}
+
+std::string search_url_for_engine(const std::string &text, const gchar *engine) {
+    std::string name = lower_ascii(engine ? engine : "");
+    std::string query = escape_query(text);
+    if (name == "duckduckgo")
+        return "https://html.duckduckgo.com/html/?q=" + query;
+    if (name == "startpage")
+        return "https://www.startpage.com/sp/search?query=" + query;
+    if (name == "brave")
+        return "https://search.brave.com/search?q=" + query;
+    return google_search_url(text);
+}
+
+std::string search_url(const std::string &text) {
+    return search_url_for_engine(text, settings_search_engine());
+}
+
+const gchar *search_engine_display_name(const gchar *engine) {
+    std::string name = lower_ascii(engine ? engine : "");
+    if (name == "duckduckgo")
+        return "DuckDuckGo";
+    if (name == "startpage")
+        return "Startpage";
+    if (name == "brave")
+        return "Brave";
+    return "Google";
+}
+
+static int hex_value(gchar c) {
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
+}
+
+static std::string decode_form_value(const std::string &value) {
+    std::string result;
+    result.reserve(value.size());
+    for (size_t i = 0; i < value.size(); i++) {
+        if (value[i] == '+') {
+            result.push_back(' ');
+            continue;
+        }
+        if (value[i] == '%' && i + 2 < value.size()) {
+            int high = hex_value(value[i + 1]);
+            int low = hex_value(value[i + 2]);
+            if (high >= 0 && low >= 0) {
+                result.push_back((gchar)((high << 4) | low));
+                i += 2;
+                continue;
+            }
+        }
+        result.push_back(value[i]);
+    }
+    return result;
+}
+
+static std::string query_value(const gchar *query, const gchar *name) {
+    if (!query || !name)
+        return "";
+    std::string raw = query;
+    size_t start = 0;
+    while (start <= raw.size()) {
+        size_t amp = raw.find('&', start);
+        std::string pair = raw.substr(start, amp == std::string::npos ? std::string::npos : amp - start);
+        size_t equals = pair.find('=');
+        std::string key = decode_form_value(equals == std::string::npos ? pair : pair.substr(0, equals));
+        if (key == name)
+            return decode_form_value(equals == std::string::npos ? "" : pair.substr(equals + 1));
+        if (amp == std::string::npos)
+            break;
+        start = amp + 1;
+    }
+    return "";
+}
+
+static bool is_google_domain(const std::string &host) {
+    if (host == "google.com" || g_str_has_suffix(host.c_str(), ".google.com"))
+        return true;
+
+    size_t first_dot = host.find('.');
+    if (first_dot == std::string::npos)
+        return false;
+    std::string first = host.substr(0, first_dot);
+    if (first == "google")
+        return true;
+    if (first != "www")
+        return false;
+    size_t second_dot = host.find('.', first_dot + 1);
+    return second_dot != std::string::npos && host.substr(first_dot + 1, second_dot - first_dot - 1) == "google";
+}
+
+bool is_google_challenge_url(const std::string &url) {
+    GError *error = nullptr;
+    GUri *parsed = g_uri_parse(url.c_str(), G_URI_FLAGS_NONE, &error);
+    if (!parsed) {
+        g_clear_error(&error);
+        return false;
+    }
+    const gchar *host = g_uri_get_host(parsed);
+    const gchar *path = g_uri_get_path(parsed);
+    bool challenge = host && path && is_google_domain(host) && g_str_has_prefix(path, "/sorry");
+    g_uri_unref(parsed);
+    return challenge;
+}
+
+std::string google_challenge_query(const std::string &url) {
+    GError *error = nullptr;
+    GUri *parsed = g_uri_parse(url.c_str(), G_URI_FLAGS_NONE, &error);
+    if (!parsed) {
+        g_clear_error(&error);
+        return "";
+    }
+    std::string continue_url = query_value(g_uri_get_query(parsed), "continue");
+    g_uri_unref(parsed);
+    if (continue_url.empty())
+        return "";
+
+    GUri *search = g_uri_parse(continue_url.c_str(), G_URI_FLAGS_NONE, &error);
+    if (!search) {
+        g_clear_error(&error);
+        return "";
+    }
+    std::string query = query_value(g_uri_get_query(search), "q");
+    g_uri_unref(search);
+    return query;
 }
 
 std::string normalize_url(const std::string &text) {

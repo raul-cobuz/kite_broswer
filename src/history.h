@@ -32,6 +32,7 @@ void history_update_title(const gchar *url, const gchar *title);
 std::vector<HistoryEntry> history_recent(int limit);
 std::vector<HistoryEntry> history_search(const gchar *query, int limit);
 std::vector<HistoryEntry> history_completions(const gchar *text, int limit);
+void history_import_entry(const gchar *url, const gchar *title, gint64 last_visit, int visit_count);
 void history_delete_url(const gchar *url);
 void history_clear();
 

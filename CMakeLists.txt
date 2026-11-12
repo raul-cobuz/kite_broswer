@@ -16,16 +16,20 @@ pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
 add_library(kite_core STATIC
     src/adblock_rules.cpp
     src/history.cpp
+    src/omnibox.cpp
+    src/profile.cpp
     src/session.cpp
     src/settings.cpp
+    src/sync.cpp
     src/url_utils.cpp
 )
 target_include_directories(kite_core PUBLIC src)
-target_link_libraries(kite_core PUBLIC PkgConfig::GLIB PkgConfig::SQLITE3)
+target_link_libraries(kite_core PUBLIC PkgConfig::GLIB PkgConfig::SQLITE3 PkgConfig::JSC)
 target_compile_options(kite_core PRIVATE -Wall -Wextra)
 
 set(KITE_UI_SOURCES
     src/adblock.cpp
+    src/app_context.cpp
     src/browser_window.cpp
     src/dark_mode.cpp
     src/downloads.cpp
@@ -82,6 +86,21 @@ if(BUILD_TESTING)
     target_link_libraries(test_adblock_rules PRIVATE kite_core)
     target_compile_options(test_adblock_rules PRIVATE -Wall -Wextra)
     add_test(NAME adblock_rules COMMAND test_adblock_rules)
+
+    add_executable(test_profile tests/test_profile.cpp)
+    target_link_libraries(test_profile PRIVATE kite_core)
+    target_compile_options(test_profile PRIVATE -Wall -Wextra)
+    add_test(NAME profile COMMAND test_profile)
+
+    add_executable(test_omnibox tests/test_omnibox.cpp)
+    target_link_libraries(test_omnibox PRIVATE kite_core)
+    target_compile_options(test_omnibox PRIVATE -Wall -Wextra)
+    add_test(NAME omnibox COMMAND test_omnibox)
+
+    add_executable(test_sync tests/test_sync.cpp)
+    target_link_libraries(test_sync PRIVATE kite_core)
+    target_compile_options(test_sync PRIVATE -Wall -Wextra)
+    add_test(NAME sync COMMAND test_sync)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)

@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <string>
 
+#include "settings.h"
+
 static int failures = 0;
 
 static void expect_eq(const std::string &actual, const std::string &expected, const char *label) {
@@ -111,6 +113,31 @@ int main() {
     expect_eq(resolve_url_input("https://x.test/?utm_source=news&q=1"), "https://x.test/?q=1",
               "typed URL is cleaned");
     expect_eq(resolve_url_input("x.test/path?fbclid=abc"), "https://x.test/path", "typed bare URL is cleaned");
+
+    expect_eq(search_url_for_engine("hello world", "duckduckgo"),
+              "https://html.duckduckgo.com/html/?q=hello%20world", "DuckDuckGo search URL");
+    expect_eq(search_url_for_engine("hello world", "startpage"),
+              "https://www.startpage.com/sp/search?query=hello%20world", "Startpage search URL");
+    expect_eq(search_url_for_engine("hello world", "brave"), "https://search.brave.com/search?q=hello%20world",
+              "Brave search URL");
+    settings_set_search_engine("duckduckgo");
+    expect_eq(normalize_url("hello world"), "https://html.duckduckgo.com/html/?q=hello%20world",
+              "configured engine is used for searches");
+    settings_set_search_engine("google");
+    expect_eq(normalize_url("hello world"), google_for("hello world"), "Google is the default engine");
+
+    const std::string challenge =
+        "https://www.google.com/sorry/index?continue=https://www.google.com/search%3Fq%3Dhpair%25201%2520handler"
+        "%25209908%26sei%3Dabc&q=EgS8G4Hw";
+    expect_true(is_google_challenge_url(challenge), "Google challenge URL detected");
+    expect_eq(google_challenge_query(challenge), "hpair 1 handler 9908", "challenge query recovered");
+    expect_true(is_google_challenge_url("https://www.google.co.uk/sorry/index?continue=x"),
+                "Google country domain challenge detected");
+    expect_true(!is_google_challenge_url("https://www.google.com/search?q=hello"), "normal Google search is not a challenge");
+    expect_true(!is_google_challenge_url("https://example.com/sorry/index?continue=x"), "other domains are not challenges");
+    expect_eq(google_challenge_query("https://www.google.com/sorry/index?continue=https%3A%2F%2Fwww.google.com"
+                                     "%2Fsearch%3Fq%3Dcats%2Band%2Bdogs"),
+              "cats and dogs", "plus-encoded challenge query recovered");
 
     if (failures) {
         std::fprintf(stderr, "%d URL test(s) failed\n", failures);

@@ -5,7 +5,9 @@
 #include <string>
 
 #include "adblock.h"
+#include "app_context.h"
 #include "browser_window.h"
+#include "profile.h"
 #include "settings.h"
 #include "tracking_protection.h"
 #include "url_utils.h"
@@ -58,11 +60,25 @@ void privacy_apply_context(WebKitWebContext *context) {
     if (!context)
         return;
 
-    WebKitCookieManager *cookies = webkit_web_context_get_cookie_manager(context);
-    if (cookies)
-        webkit_cookie_manager_set_accept_policy(cookies, WEBKIT_COOKIE_POLICY_ACCEPT_NO_THIRD_PARTY);
-
     WebKitWebsiteDataManager *manager = webkit_web_context_get_website_data_manager(context);
+    WebKitCookieManager *cookies = webkit_web_context_get_cookie_manager(context);
+    if (cookies) {
+        // WebKitGTK keeps cookies in memory unless persistent storage is
+        // configured. Without this every launch looks like a brand-new browser
+        // to sites, which makes Google in particular treat searches as bot
+        // traffic. Ephemeral (incognito) contexts keep their in-memory store.
+        if (!manager || !webkit_website_data_manager_is_ephemeral(manager)) {
+            gchar *path = g_build_filename(profile_data_dir(), "cookies.sqlite", nullptr);
+            gchar *dir = g_path_get_dirname(path);
+            g_mkdir_with_parents(dir, 0700);
+            g_free(dir);
+            webkit_cookie_manager_set_persistent_storage(cookies, path, WEBKIT_COOKIE_PERSISTENT_STORAGE_SQLITE);
+            g_printerr("[Kite DEBUG] persistent cookies=%s\n", path);
+            g_free(path);
+        }
+        webkit_cookie_manager_set_accept_policy(cookies, WEBKIT_COOKIE_POLICY_ACCEPT_NO_THIRD_PARTY);
+    }
+
     if (manager)
         webkit_website_data_manager_set_itp_enabled(manager, TRUE);
 }
@@ -84,7 +100,7 @@ void privacy_clear_on_exit() {
         return;
 
     WebKitWebsiteDataManager *manager =
-        webkit_web_context_get_website_data_manager(webkit_web_context_get_default());
+        webkit_web_context_get_website_data_manager(app_webkit_context());
     if (!manager)
         return;
 

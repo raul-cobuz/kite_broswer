@@ -15,6 +15,11 @@ void settings_set_dark_mode(bool enabled);
 const gchar *settings_homepage();
 void settings_set_homepage(const gchar *url);
 
+const gchar *settings_search_engine();
+void settings_set_search_engine(const gchar *engine);
+bool settings_google_fallback();
+void settings_set_google_fallback(bool enabled);
+
 bool settings_restore_session();
 void settings_set_restore_session(bool enabled);
 
@@ -36,3 +41,10 @@ void settings_set_strip_tracking_params(bool enabled);
 
 bool settings_clear_on_exit();
 void settings_set_clear_on_exit(bool enabled);
+
+const gchar *settings_sync_folder();
+void settings_set_sync_folder(const gchar *path);
+bool settings_sync_on_startup();
+void settings_set_sync_on_startup(bool enabled);
+bool settings_sync_settings();
+void settings_set_sync_settings(bool enabled);

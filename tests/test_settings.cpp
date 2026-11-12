@@ -36,6 +36,8 @@ int main() {
     check(!settings_dark_mode(), "dark mode defaults to off");
     check(get_permission_decision("media", "example.com") == -1, "unknown permission decision");
     expect_str(settings_homepage(), "kite://newtab", "homepage defaults to new tab");
+    expect_str(settings_search_engine(), "google", "search engine defaults to Google");
+    check(settings_google_fallback(), "Google fallback defaults to on");
     check(settings_restore_session(), "session restore defaults to on");
     check(settings_download_directory() && *settings_download_directory(), "download directory has a default");
     check(settings_site_zoom("example.com") == 1.0, "site zoom defaults to 100%");
@@ -68,6 +70,11 @@ int main() {
     g_free(key);
 
     settings_set_homepage("https://example.org");
+    settings_set_search_engine("not-a-search-engine");
+    expect_str(settings_search_engine(), "google", "unknown search engine falls back to Google");
+    settings_set_search_engine("brave");
+    settings_set_google_fallback(false);
+    check(!settings_google_fallback(), "Google fallback disabled in memory");
     settings_set_restore_session(false);
     settings_set_download_directory("/tmp/kite-downloads");
     settings_set_site_zoom("example.com", 1.25);
@@ -111,6 +118,10 @@ int main() {
     value = g_key_file_get_string(file, "general", "homepage", nullptr);
     expect_str(value, "https://example.org", "homepage persisted");
     g_free(value);
+    value = g_key_file_get_string(file, "search", "engine", nullptr);
+    expect_str(value, "brave", "search engine persisted");
+    g_free(value);
+    check(!g_key_file_get_boolean(file, "search", "google_fallback", nullptr), "fallback preference persisted");
     check(!g_key_file_get_boolean(file, "session", "restore", nullptr), "session restore persisted");
     value = g_key_file_get_string(file, "downloads", "directory", nullptr);
     expect_str(value, "/tmp/kite-downloads", "download directory persisted");
@@ -134,6 +145,8 @@ int main() {
     check(get_permission_decision("media", "example.com") == 1, "allow restored");
     check(get_permission_decision("geolocation", "fe80::1%eth0") == 0, "deny restored");
     expect_str(settings_homepage(), "https://example.org", "homepage restored");
+    expect_str(settings_search_engine(), "brave", "search engine restored");
+    check(!settings_google_fallback(), "fallback preference restored");
     check(!settings_restore_session(), "session restore restored");
     expect_str(settings_download_directory(), "/tmp/kite-downloads", "download directory restored");
     check(settings_site_zoom("example.com") == 1.25, "site zoom restored");

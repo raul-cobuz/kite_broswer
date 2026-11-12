@@ -57,6 +57,11 @@ new binary.
 ## Features
 
 - Tabbed browsing with incognito tabs that share one ephemeral session
+- Split view: two tabs side by side in one window, with the address bar, navigation, and find bar following the focused pane
+- Named profiles at `kite://profiles`: isolated history, bookmarks, settings, extensions, and website data; switching relaunches Kite
+- Folder-based sync at `kite://sync` that merges bookmarks, pinned links, history, and optional settings through `kite-sync.json`
+- Omnibox suggestions from history, bookmarks, pins, open tabs, and Kite pages, with engine-aware search
+- Search settings at `kite://settings` for Google, DuckDuckGo, Startpage, or Brave, plus an automatic Google verification fallback
 - Permission prompts (camera/microphone, location, notifications, clipboard, and more) with optional per-site memory
 - Friendly error pages for network failures, TLS certificate errors, and renderer crashes
 - Persistent dark mode that recolors page colors while preserving hue instead of inverting them, with a Google Search fallback that handles gradient result cards
@@ -67,7 +72,7 @@ new binary.
 - Bookmark star in the toolbar and Ctrl+D; Ctrl+H opens history in a new tab
 - Session restore on startup and recently closed tabs (Ctrl+Shift+T)
 - Browser-style `kite://newtab` start page with search, a recent-searches strip, up to five pinned links, recent history, and bookmarks (regular tabs only)
-- Extension manager at `kite://extensions` with folder installation, enable/disable, reload, and removal
+- Extension manager at `kite://extensions` with folder installation, enable/disable, reload, removal, content scripts/styles, background scripts or pages, and practical `chrome.*` APIs
 - Downloads manager with progress, cancel, open, and clear-finished actions; every download asks where to save
 - Per-site zoom that survives reloads and restarts
 - Ad-blocking via WebKit content blockers, plus in-page removal of YouTube player/feed ads and ad-block detection prompts
@@ -83,11 +88,20 @@ dark_mode=false
 [general]
 homepage=kite://newtab
 
+[search]
+engine=google
+google_fallback=true
+
 [session]
 restore=true
 
 [downloads]
 directory=/home/user/Downloads
+
+[sync]
+folder=/home/user/KiteSync
+on_startup=false
+include_settings=false
 
 [permissions]
 media|example.com=allow
@@ -97,8 +111,11 @@ zoom|example.com=1.2
 ```
 
 - `homepage` is used by the Home button (default `kite://newtab`).
+- `engine` is `google` (default), `duckduckgo`, `startpage`, or `brave`.
+- `google_fallback` rewrites Google `/sorry/` verification pages to DuckDuckGo results instead of showing the robot check.
 - `restore` restores the previous session on startup alongside a fresh start page, which opens first and stays active.
 - `directory` is the folder the save dialog starts in; every download shows a file chooser.
+- `[sync]` controls the shared folder, startup syncing, and whether settings are merged along with bookmarks, pins, and history.
 - `[zoom]` stores per-host zoom levels, written automatically by Ctrl++ / Ctrl+-.
 - `[permissions]` is written from the permission prompts; delete keys to ask again.
 
@@ -109,6 +126,25 @@ restore is enabled. Incognito tabs do not write history, bookmarks, pinned links
 session state, permission decisions, or per-site zoom, and they do not see your
 regular history or bookmarks.
 
+## Profiles and sync
+
+Profiles are managed from `kite://profiles`. The default profile keeps the legacy
+paths below; named profiles use `~/.config/kite/profiles/<id>` and
+`~/.local/share/kite/profiles/<id>`. Switching writes an active-profile marker and
+relaunches Kite. Start directly in a profile with:
+
+```bash
+kite --profile=<id>
+# or open a URL/query directly
+kite --url=kite://settings
+```
+
+Sync uses a folder you choose on `kite://sync`. Kite writes `kite-sync.json` there
+and merges bookmarks, pinned links, and history, optionally including homepage,
+search engine, Google fallback, dark mode, session restore, ad blocking,
+tracking-parameter stripping, and clear-on-exit. Cookies, passwords, and extensions
+stay local.
+
 ## Custom extensions
 
 Kite loads extensions from `~/.local/share/kite/extensions/<id>/manifest.json`.
@@ -117,11 +153,19 @@ a folder, enable or disable an extension, reload all extensions, or remove one.
 The folder must contain a `manifest.json`; the whole folder is copied into the
 Kite data directory.
 
-Kite supports WebExtension-style content scripts and styles, not full Chrome
-extensions. A manifest can declare `content_scripts` entries with `matches`,
-`js`, `css`, `run_at`, and `all_frames`. Scripts can use standard DOM APIs.
-Chrome Web Store `.crx` packages, background/service-worker pages, and the
-`chrome.*` APIs are not available because WebKitGTK does not implement them.
+Kite supports WebExtension-style content scripts and styles plus a practical
+subset of the extension runtime. A manifest can declare `content_scripts` entries
+with `matches`, `js`, `css`, `run_at`, and `all_frames`, and a `background` entry
+with `scripts`, `page`, or `service_worker` (loaded as a background script).
+Supported APIs include `chrome.storage`, `chrome.runtime` messaging,
+`chrome.tabs`, `chrome.notifications`, and `chrome.permissions`, backed by
+`kite-ext://` pages. Scripts can also use standard DOM APIs.
+
+This is not a full Chrome extension implementation. WebKitGTK cannot install
+Chrome Web Store `.crx` packages or provide Chrome's `webRequest`,
+declarativeNetRequest, or service-worker execution model. Background pages are
+hosted in offscreen windows, and extension content scripts share Kite's content
+manager (so they also run in incognito tabs).
 
 ```json
 {
@@ -151,6 +195,7 @@ such as `<all_urls>` expand to `http://` and `https://` only.
 | Ctrl+T | New tab |
 | Ctrl+W | Close tab |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab |
+| Ctrl+\ | Toggle side-by-side split view |
 | Ctrl+Shift+T | Reopen most recently closed tab |
 | Ctrl+L | Focus URL bar |
 | Ctrl+R | Reload |
@@ -166,8 +211,9 @@ such as `<all_urls>` expand to `http://` and `https://` only.
 
 Omnibox bangs: `!yt`, `!gh`, `!w`, `!r` (YouTube, GitHub, Wikipedia, Reddit).
 
-Internal pages: `kite://newtab`, `kite://history`, `kite://bookmarks`, and
-`kite://extensions` can be typed in the address bar at any time.
+Internal pages: `kite://newtab`, `kite://history`, `kite://bookmarks`,
+`kite://settings`, `kite://profiles`, `kite://sync`, and `kite://extensions` can be
+typed in the address bar at any time.
 
 ## Layout
 
@@ -177,9 +223,13 @@ src/browser_window.*     window, toolbar, shortcuts, omnibox, session save/resto
 src/tabs.*               tab lifecycle, history/zoom hooks, recently closed tabs
 src/history.*            SQLite history/bookmarks/pinned-link schema and queries
 src/session.*            session.ini load/save/clear
-src/settings.*           settings.ini, permission memory, per-site zoom
+src/settings.*           settings.ini, permission memory, per-site zoom, search engine
 src/kite_pages.*         kite:// internal pages
-src/extensions.*         extension manifest scanning and content-script injection
+src/profile.*            profile registry, isolated paths, active-profile switching
+src/sync.*               folder-based sync of bookmarks, pins, history, and settings
+src/omnibox.*            local-first address-bar suggestions
+src/app_context.*        persistent WebKit context and cookie storage
+src/extensions.*         extension manifests, content scripts, background pages, chrome.* APIs
 src/downloads.*          downloads popover and destination handling
 src/adblock.*            WebKit content blocker
 src/dark_mode.*          dark-mode CSS injection and toolbar toggle

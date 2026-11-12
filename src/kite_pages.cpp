@@ -10,7 +10,9 @@
 #include "browser_window.h"
 #include "extensions.h"
 #include "history.h"
+#include "profile.h"
 #include "settings.h"
+#include "sync.h"
 #include "url_utils.h"
 
 static std::string html_escape(const std::string &text) {
@@ -104,6 +106,12 @@ static bool search_hit_from_entry(const HistoryEntry &entry, SearchHit &hit) {
                (path == "/" || path == "/html" || path == "/html/" || path == "/lite" || path == "/lite/")) {
         search_query = query_param(query.c_str(), "q");
         engine = "DuckDuckGo";
+    } else if (host == "startpage.com" && path.rfind("/sp/search", 0) == 0) {
+        search_query = query_param(query.c_str(), "query");
+        engine = "Startpage";
+    } else if (host == "search.brave.com" && path.rfind("/search", 0) == 0) {
+        search_query = query_param(query.c_str(), "q");
+        engine = "Brave";
     } else if ((host == "bing.com" || host.rfind("bing.", 0) == 0) && path.rfind("/search", 0) == 0) {
         search_query = query_param(query.c_str(), "q");
         engine = "Bing";
@@ -659,6 +667,67 @@ html[data-theme="dark"] .btn.primary { color: #121214; }
 .btn.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn.danger { color: var(--danger); }
 .btn.danger:hover { border-color: var(--danger); background: var(--accent-soft); }
+.settings-card {
+  margin: 0 0 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-soft);
+  box-shadow: var(--tile-shadow);
+}
+.settings-card h2 { margin: 0 0 6px; font-size: 15px; }
+.settings-card p { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+.settings-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.settings-form.wide { grid-template-columns: minmax(180px, 1.6fr) minmax(140px, 1fr) auto; }
+.settings-form input[type="text"], .settings-form select {
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  outline: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.settings-form input[type="text"]:focus, .settings-form select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+.settings-check input { margin-top: 2px; }
+.profile-list, .sync-actions { display: flex; flex-direction: column; gap: 12px; }
+.profile-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-soft);
+  box-shadow: var(--tile-shadow);
+}
+.profile-card.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+.profile-main { flex: 1; min-width: 0; }
+.profile-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.profile-title strong { font-size: 14.5px; }
+.profile-meta { margin: 6px 0 0; color: var(--muted); font-size: 12px; word-break: break-all; }
+.profile-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+@media (max-width: 620px) {
+  .settings-form, .settings-form.wide { grid-template-columns: 1fr; }
+}
 .newtab-notice {
   width: 100%;
   max-width: 640px;
@@ -902,12 +971,18 @@ html[data-theme="dark"] .btn.primary { color: #121214; }
 static const char *SEARCH_JS = R"JS(
 <script>
 (function () {
+  var SEARCH_ENGINES = {
+    google: 'https://www.google.com/search?q=',
+    duckduckgo: 'https://html.duckduckgo.com/html/?q=',
+    startpage: 'https://www.startpage.com/sp/search?query=',
+    brave: 'https://search.brave.com/search?q='
+  };
   function looksLikeUrl(text) {
     if (/^(localhost|\[[0-9a-f:]+\]|[0-9]{1,3}(\.[0-9]{1,3}){3})(:[0-9]+)?([\/?#]|$)/i.test(text)) return 2;
     if (!/\s/.test(text) && /^[^\/]+\.[^\/]{2,}([\/?#].*)?$/i.test(text)) return 1;
     return 0;
   }
-  function targetFor(text) {
+  function targetFor(text, engine) {
     if (/^(https?:\/\/|file:\/\/|kite:\/\/)/i.test(text)) return text;
     var bang = text.match(/^!(yt|gh|w|r)\s+([\s\S]+)$/i);
     if (bang) {
@@ -921,18 +996,19 @@ static const char *SEARCH_JS = R"JS(
     var kind = looksLikeUrl(text);
     if (kind === 2) return 'http://' + text;
     if (kind === 1) return 'https://' + text;
-    return 'https://www.google.com/search?q=' + encodeURIComponent(text);
+    var base = SEARCH_ENGINES[engine] || SEARCH_ENGINES.google;
+    return base + encodeURIComponent(text);
   }
   document.querySelectorAll('form[data-kite-search]').forEach(function (form) {
     form.addEventListener('submit', function (event) {
-      var input = form.querySelector('input[name="q"]');
+      var input = form.querySelector('input[type="text"]');
       var text = input && input.value ? input.value.trim() : '';
       event.preventDefault();
       if (!text) {
         if (input) input.focus();
         return;
       }
-      window.location.href = targetFor(text);
+      window.location.href = targetFor(text, form.getAttribute('data-engine'));
     });
   });
 })();
@@ -960,18 +1036,37 @@ static std::string topbar(bool incognito) {
     } else {
         html += "<nav class=\"topnav\"><a href=\"kite://history\">History</a>"
                 "<a href=\"kite://bookmarks\">Bookmarks</a>"
-                "<a href=\"kite://extensions\">Extensions</a></nav>";
+                "<a href=\"kite://extensions\">Extensions</a>"
+                "<a href=\"kite://profiles\">Profiles</a>"
+                "<a href=\"kite://sync\">Sync</a>"
+                "<a href=\"kite://settings\">Settings</a></nav>";
     }
     return html + "</header>";
 }
 
 static std::string search_form() {
-    return "<form class=\"search\" action=\"https://www.google.com/search\" method=\"get\" data-kite-search>" +
-           std::string(SEARCH_SVG) +
-           "<input type=\"text\" name=\"q\" placeholder=\"Search with Google or type a URL\" "
-           "autocomplete=\"off\" autocapitalize=\"off\" spellcheck=\"false\" enterkeyhint=\"go\" "
-           "aria-label=\"Search with Google or type a URL\">"
-           "<button type=\"submit\">Search</button></form>";
+    const gchar *engine = settings_search_engine();
+    std::string key = engine ? engine : "google";
+    std::string action = "https://www.google.com/search";
+    std::string param = "q";
+    if (key == "duckduckgo") {
+        action = "https://html.duckduckgo.com/html/";
+    } else if (key == "startpage") {
+        action = "https://www.startpage.com/sp/search";
+        param = "query";
+    } else if (key == "brave") {
+        action = "https://search.brave.com/search";
+    } else {
+        key = "google";
+    }
+
+    std::string label = search_engine_display_name(key.c_str());
+    std::string placeholder = "Search with " + label + " or type a URL";
+    return "<form class=\"search\" action=\"" + action + "\" method=\"get\" data-kite-search data-engine=\"" +
+           html_escape(key) + "\">" + std::string(SEARCH_SVG) + "<input type=\"text\" name=\"" + param +
+           "\" placeholder=\"" + html_escape(placeholder) + "\" autocomplete=\"off\" autocapitalize=\"off\" "
+           "spellcheck=\"false\" enterkeyhint=\"go\" aria-label=\"" +
+           html_escape(placeholder) + "\"><button type=\"submit\">Search</button></form>";
 }
 
 static std::string recent_searches_bar() {
@@ -1438,6 +1533,29 @@ static std::string extensions_page(bool incognito, const std::string &path, cons
             }
             if (meta.empty())
                 meta = "No content scripts";
+            if (extension.has_background()) {
+                meta += " · background";
+                if (!extension.background_page.empty())
+                    meta += " page";
+                else
+                    meta += " script";
+            }
+            if (!extension.permissions.empty()) {
+                meta += " · permissions: ";
+                for (size_t i = 0; i < extension.permissions.size(); i++) {
+                    if (i)
+                        meta += ", ";
+                    meta += extension.permissions[i];
+                }
+            }
+            if (!extension.host_permissions.empty()) {
+                meta += " · hosts: ";
+                for (size_t i = 0; i < extension.host_permissions.size(); i++) {
+                    if (i)
+                        meta += ", ";
+                    meta += extension.host_permissions[i];
+                }
+            }
             meta += " · " + extension.path;
             body += "<p class=\"ext-meta\">" + html_escape(meta) + "</p>";
 
@@ -1469,16 +1587,330 @@ static std::string extensions_page(bool incognito, const std::string &path, cons
             "<div class=\"code\">" +
             html_escape(EXTENSION_EXAMPLE) +
             "</div>"
-            "<p class=\"ext-note\">Supported manifest fields are <code>matches</code>, <code>js</code>, "
-            "<code>css</code>, <code>run_at</code> and <code>all_frames</code> inside <code>content_scripts</code>. "
-            "Chrome Web Store <code>.crx</code> packages and <code>chrome.*</code> APIs are not available in "
-            "WebKitGTK, so keep custom extensions to content scripts and styles.</p></section>";
+            "<p class=\"ext-note\">Supported pieces include content scripts/styles, background pages or scripts, "
+            "<code>chrome.runtime</code>, <code>chrome.storage</code>, <code>chrome.tabs</code>, "
+            "<code>chrome.notifications</code>, <code>chrome.permissions</code>, and "
+            "<code>kite-ext://</code> package resources. Chrome Web Store <code>.crx</code> packages and the full "
+            "Chrome extension surface are not available in WebKitGTK.</p></section>";
 
     body += "</main>";
     body += "<footer class=\"page-footer\"><a href=\"kite://newtab\">Kite start page</a>"
             "<a href=\"kite://history\">History</a><a href=\"kite://bookmarks\">Bookmarks</a>"
-            "<span>Kite Browser</span></footer>";
+            "<a href=\"kite://profiles\">Profiles</a><span>Kite Browser</span></footer>";
     return page_shell("Extensions", body, "content-page", false);
+}
+
+static std::string sync_redirect_page() {
+    return "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+           "<meta http-equiv=\"refresh\" content=\"0; url=kite://sync\">"
+           "<title>Sync</title>"
+           "<script>window.location.replace('kite://sync');</script>"
+           "</head><body></body></html>";
+}
+
+static std::string settings_redirect_page() {
+    return "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+           "<meta http-equiv=\"refresh\" content=\"0; url=kite://settings?notice=saved\">"
+           "<title>Settings</title>"
+           "<script>window.location.replace('kite://settings?notice=saved');</script>"
+           "</head><body></body></html>";
+}
+
+static std::string settings_page(bool incognito, const std::string &path, const gchar *query) {
+    if (incognito) {
+        return page_shell(
+            "Settings",
+            topbar(true) +
+                "<main class=\"content\"><div class=\"page-header\"><h1>Settings</h1></div>"
+                "<div class=\"empty-state\">Search settings are managed from a normal Kite tab.</div></main>",
+            "content-page incognito-page", true);
+    }
+
+    if (path == "/save") {
+        settings_set_search_engine(query_param(query, "engine").c_str());
+        std::string fallback = query_param(query, "google_fallback");
+        settings_set_google_fallback(fallback == "1" || fallback == "on" || fallback == "true");
+        save_settings();
+        return settings_redirect_page();
+    }
+
+    std::string notice;
+    if (query_param(query, "notice") == "saved")
+        notice = "<div class=\"notice\">Search settings saved.</div>";
+
+    std::string current = settings_search_engine() ? settings_search_engine() : "google";
+    std::string options;
+    for (const char *key : {"google", "duckduckgo", "startpage", "brave"}) {
+        options += "<option value=\"" + std::string(key) + "\"" + (current == key ? " selected" : "") + ">" +
+                   html_escape(search_engine_display_name(key)) + "</option>";
+    }
+
+    std::string body = topbar(false);
+    body += "<main class=\"content\"><div class=\"page-header\"><h1>Settings</h1>"
+            "<span class=\"count\">Search</span></div>" +
+            notice;
+    body += "<section class=\"settings-card\"><h2>Search engine</h2>"
+            "<p>Kite uses this engine when you type a query in the address bar or on the start page.</p>"
+            "<form action=\"kite://settings/save\" method=\"get\">"
+            "<div class=\"settings-form\"><select name=\"engine\">" +
+            options +
+            "</select><button class=\"btn primary\" type=\"submit\">Save</button></div>"
+            "<label class=\"settings-check\" style=\"margin-top:12px\"><input type=\"checkbox\" "
+            "name=\"google_fallback\" value=\"1\"" +
+            std::string(settings_google_fallback() ? " checked" : "") +
+            "><span>If Google shows a robot-verification page, retry the search with DuckDuckGo.</span></label>"
+            "</form></section>";
+    body += "<section class=\"settings-card\"><h2>About the Google fallback</h2>"
+            "<p>Google sometimes treats automated WebKit browsers as suspicious and redirects a search to "
+            "<code>/sorry/</code>. When that happens Kite recovers your query and loads DuckDuckGo results "
+            "instead, with a notice above the page. Disable the option above to let the Google page load "
+            "as-is.</p></section>";
+    body += "</main>";
+    body += "<footer class=\"page-footer\"><a href=\"kite://newtab\">Kite start page</a>"
+            "<a href=\"kite://history\">History</a><a href=\"kite://bookmarks\">Bookmarks</a>"
+            "<a href=\"kite://profiles\">Profiles</a><a href=\"kite://sync\">Sync</a>"
+            "<span>Kite Browser</span></footer>";
+    return page_shell("Settings", body, "content-page", false);
+}
+
+static std::string profiles_page(bool incognito, const std::string &path, const gchar *query) {
+    if (incognito) {
+        return page_shell(
+            "Profiles",
+            topbar(true) +
+                "<main class=\"content\"><div class=\"page-header\"><h1>Profiles</h1></div>"
+                "<div class=\"empty-state\">Profiles are managed from a normal Kite tab.</div></main>",
+            "content-page incognito-page", true);
+    }
+
+    std::string notice;
+    if (path == "/create") {
+        std::string name = query_param(query, "name");
+        std::string error;
+        std::string new_id;
+        if (name.empty()) {
+            notice = "<div class=\"notice\">Enter a name for the new profile.</div>";
+        } else if (profile_create(name.c_str(), &error, &new_id)) {
+            notice = "<div class=\"notice\">Created profile <strong>" + html_escape(name) +
+                     "</strong>. Switch to it when you are ready.</div>";
+        } else {
+            notice = "<div class=\"notice\">Could not create that profile" +
+                     (error.empty() ? "." : ": " + html_escape(error)) + "</div>";
+        }
+    } else if (path == "/rename") {
+        std::string id = query_param(query, "id");
+        std::string name = query_param(query, "name");
+        std::string error;
+        if (id.empty() || name.empty()) {
+            notice = "<div class=\"notice\">Choose a profile and enter a new name.</div>";
+        } else if (profile_rename(id.c_str(), name.c_str(), &error)) {
+            notice = "<div class=\"notice\">Renamed profile to <strong>" + html_escape(name) + "</strong>.</div>";
+        } else {
+            notice = "<div class=\"notice\">Could not rename that profile" +
+                     (error.empty() ? "." : ": " + html_escape(error)) + "</div>";
+        }
+    } else if (path == "/delete") {
+        std::string id = query_param(query, "id");
+        std::string error;
+        if (id.empty()) {
+            notice = "<div class=\"notice\">Choose a profile to delete.</div>";
+        } else if (profile_delete(id.c_str(), &error)) {
+            notice = "<div class=\"notice\">Deleted that profile and its local data.</div>";
+        } else {
+            notice = "<div class=\"notice\">Could not delete that profile" +
+                     (error.empty() ? "." : ": " + html_escape(error)) + "</div>";
+        }
+    } else if (path == "/switch") {
+        std::string id = query_param(query, "id");
+        if (!id.empty() && id != profile_current_id()) {
+            switch_profile_and_restart(id.c_str());
+            return page_shell(
+                "Switching profile",
+                topbar(false) +
+                    "<main class=\"content\"><div class=\"page-header\"><h1>Switching profile</h1></div>"
+                    "<div class=\"empty-state\">Kite is restarting with the selected profile.</div></main>",
+                "content-page", false);
+        }
+        notice = "<div class=\"notice\">That profile is already active.</div>";
+    }
+
+    std::vector<ProfileInfo> profiles = profile_list();
+    std::string body = topbar(false);
+    body += "<main class=\"content\"><div class=\"page-header\"><h1>Profiles"
+            "<span class=\"count\">" +
+            std::to_string(profiles.size()) + " available</span></h1></div>" + notice;
+
+    body += "<section class=\"settings-card\"><h2>Create a profile</h2>"
+            "<p>Each named profile keeps its own history, bookmarks, settings, extensions and website data. "
+            "Switching relaunches Kite.</p>"
+            "<form class=\"settings-form\" action=\"kite://profiles/create\" method=\"get\">"
+            "<input type=\"text\" name=\"name\" placeholder=\"Profile name\" required autocomplete=\"off\">"
+            "<button class=\"btn primary\" type=\"submit\">Create</button></form></section>";
+
+    body += "<div class=\"profile-list\">";
+    for (const auto &profile : profiles) {
+        std::string initial(1, host_initial(profile.name));
+        body += "<article class=\"profile-card" + std::string(profile.current ? " current" : "") +
+                "\"><div class=\"ext-icon\">" + html_escape(initial) +
+                "</div><div class=\"profile-main\"><div class=\"profile-title\"><strong>" +
+                html_escape(profile.name) + "</strong>";
+        if (profile.is_default)
+            body += "<span class=\"ext-state enabled\">Default</span>";
+        if (profile.current)
+            body += "<span class=\"ext-state enabled\">Current</span>";
+        body += "</div><p class=\"profile-meta\">id: " + html_escape(profile.id) + "</p>";
+
+        body += "<div class=\"profile-actions\">";
+        if (!profile.current) {
+            body += "<a class=\"btn primary\" href=\"kite://profiles/switch?id=" + escape_query_value(profile.id) +
+                    "\">Switch</a>";
+        }
+        if (!profile.is_default) {
+            body += "<form class=\"settings-form\" action=\"kite://profiles/rename\" method=\"get\">"
+                    "<input type=\"hidden\" name=\"id\" value=\"" + html_escape(profile.id) + "\">"
+                    "<input type=\"text\" name=\"name\" value=\"" + html_escape(profile.name) +
+                    "\" required autocomplete=\"off\">"
+                    "<button class=\"btn\" type=\"submit\">Rename</button></form>";
+        }
+        if (!profile.is_default && !profile.current) {
+            body += "<a class=\"btn danger\" href=\"kite://profiles/delete?id=" + escape_query_value(profile.id) +
+                    "\">Delete</a>";
+        }
+        body += "</div></div></article>";
+    }
+    body += "</div>";
+
+    body += "<section class=\"settings-card\" style=\"margin-top:18px\"><h2>Paths</h2>"
+            "<p>Default profile data stays in the legacy Kite folders. Named profiles use isolated subfolders.</p>"
+            "<p class=\"ext-meta\">Data: <code>" +
+            html_escape(profile_data_dir()) + "</code></p>"
+            "<p class=\"ext-meta\">Config: <code>" +
+            html_escape(profile_config_dir()) + "</code></p></section>";
+
+    body += "</main><footer class=\"page-footer\">"
+            "<a href=\"kite://sync\">Sync</a><a href=\"kite://extensions\">Extensions</a>"
+            "<span>Kite Browser</span></footer>";
+    return page_shell("Profiles", body, "content-page", false);
+}
+
+static std::string sync_page(bool incognito, const std::string &path, const gchar *query) {
+    if (incognito) {
+        return page_shell(
+            "Sync",
+            topbar(true) +
+                "<main class=\"content\"><div class=\"page-header\"><h1>Sync</h1></div>"
+                "<div class=\"empty-state\">Sync is managed from a normal Kite tab.</div></main>",
+            "content-page incognito-page", true);
+    }
+
+    std::string notice;
+    if (path == "/save") {
+        std::string folder = query_param(query, "folder");
+        bool on_startup = query_param(query, "on_startup") == "1" || query_param(query, "on_startup") == "on";
+        bool include_settings =
+            query_param(query, "sync_settings") == "1" || query_param(query, "sync_settings") == "on";
+        settings_set_sync_folder(folder.c_str());
+        settings_set_sync_on_startup(on_startup);
+        settings_set_sync_settings(include_settings);
+        save_settings();
+        notice = "<div class=\"notice\">Sync settings saved.</div>";
+    } else if (path == "/choose") {
+        GtkWidget *dialog = gtk_file_chooser_dialog_new(
+            "Choose a sync folder", browser.main_window ? GTK_WINDOW(browser.main_window) : nullptr,
+            GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER, "Cancel", GTK_RESPONSE_CANCEL, "Use folder", GTK_RESPONSE_ACCEPT,
+            nullptr);
+        const gchar *current = settings_sync_folder();
+        if (current && *current)
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), current);
+        else
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), g_get_home_dir());
+        if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+            gchar *folder = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            if (folder) {
+                settings_set_sync_folder(folder);
+                save_settings();
+                g_free(folder);
+            }
+        }
+        gtk_widget_destroy(dialog);
+        return sync_redirect_page();
+    } else if (path == "/now") {
+        const gchar *folder = settings_sync_folder();
+        if (!folder || !*folder) {
+            notice = "<div class=\"notice\">Choose a sync folder first.</div>";
+        } else {
+            SyncResult result;
+            std::string error;
+            if (sync_run(folder, settings_sync_settings(), &result, &error)) {
+                notice = "<div class=\"notice\">Synced with <code>" + html_escape(folder) + "</code>: " +
+                         std::to_string(result.bookmarks_added) + " bookmark(s), " +
+                         std::to_string(result.pins_added) + " pin(s), " +
+                         std::to_string(result.history_added) + " history entr" +
+                         (result.history_added == 1 ? "y" : "ies") +
+                         (result.settings_applied ? ", settings applied" : "") + ".</div>";
+            } else {
+                notice = "<div class=\"notice\">Sync failed" +
+                         (error.empty() ? "." : ": " + html_escape(error)) + "</div>";
+            }
+        }
+    } else if (path == "/export") {
+        const gchar *folder = settings_sync_folder();
+        if (!folder || !*folder) {
+            notice = "<div class=\"notice\">Choose a sync folder first.</div>";
+        } else {
+            g_mkdir_with_parents(folder, 0700);
+            gchar *path_out = g_build_filename(folder, sync_file_name(), nullptr);
+            std::string error;
+            if (sync_write_file(path_out, &error)) {
+                notice = "<div class=\"notice\">Exported current profile data to <code>" +
+                         html_escape(path_out) + "</code>.</div>";
+            } else {
+                notice = "<div class=\"notice\">Export failed" +
+                         (error.empty() ? "." : ": " + html_escape(error)) + "</div>";
+            }
+            g_free(path_out);
+        }
+    }
+
+    std::string folder = settings_sync_folder() ? settings_sync_folder() : "";
+    std::string body = topbar(false);
+    body += "<main class=\"content\"><div class=\"page-header\"><h1>Sync</h1>"
+            "<div class=\"page-actions\">"
+            "<a class=\"btn\" href=\"kite://sync/choose\">Choose folder</a>"
+            "<a class=\"btn primary\" href=\"kite://sync/now\">Sync now</a>"
+            "<a class=\"btn\" href=\"kite://sync/export\">Export only</a>"
+            "</div></div>" +
+            notice;
+
+    body += "<section class=\"settings-card\"><h2>Shared folder</h2>"
+            "<p>Kite writes <code>" +
+            html_escape(sync_file_name()) +
+            "</code> into a folder you control. Merge keeps local titles, newest history visits, "
+            "and the five-pin limit.</p>"
+            "<form action=\"kite://sync/save\" method=\"get\">"
+            "<div class=\"settings-form\">"
+            "<input type=\"text\" name=\"folder\" value=\"" +
+            html_escape(folder) +
+            "\" placeholder=\"/path/to/shared/folder\" autocomplete=\"off\">"
+            "<button class=\"btn primary\" type=\"submit\">Save</button></div>"
+            "<label class=\"settings-check\"><input type=\"checkbox\" name=\"on_startup\" value=\"1\"" +
+            std::string(settings_sync_on_startup() ? " checked" : "") +
+            "> Sync on startup</label>"
+            "<label class=\"settings-check\"><input type=\"checkbox\" name=\"sync_settings\" value=\"1\"" +
+            std::string(settings_sync_settings() ? " checked" : "") +
+            "> Include selected settings (homepage, search engine, Google fallback, dark mode, restore session, "
+            "ad blocking, tracking-parameter stripping, clear on exit)</label>"
+            "</form></section>";
+
+    body += "<section class=\"settings-card\"><h2>What syncs</h2>"
+            "<p>Bookmarks, pinned links, history, homepage, search engine, Google fallback, dark mode, "
+            "restore-session, ad blocking, tracking-parameter stripping and clear-on-exit. Cookies, passwords "
+            "and extensions stay local for now.</p></section>";
+
+    body += "</main><footer class=\"page-footer\">"
+            "<a href=\"kite://profiles\">Profiles</a><a href=\"kite://bookmarks\">Bookmarks</a>"
+            "<span>Kite Browser</span></footer>";
+    return page_shell("Sync", body, "content-page", false);
 }
 
 static std::string not_found_page() {
@@ -1529,6 +1961,12 @@ static void on_kite_request(WebKitURISchemeRequest *request, gpointer user_data)
         html = bookmarks_page(incognito, path_name, query);
     else if (host_name == "extensions")
         html = extensions_page(incognito, path_name, query);
+    else if (host_name == "profiles")
+        html = profiles_page(incognito, path_name, query);
+    else if (host_name == "sync")
+        html = sync_page(incognito, path_name, query);
+    else if (host_name == "settings")
+        html = settings_page(incognito, path_name, query);
     else
         html = not_found_page();
 

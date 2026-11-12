@@ -1,7 +1,10 @@
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 
+#include <cstring>
+
 #include "adblock.h"
+#include "app_context.h"
 #include "browser_window.h"
 #include "dark_mode.h"
 #include "downloads.h"
@@ -9,16 +12,59 @@
 #include "history.h"
 #include "kite_pages.h"
 #include "privacy.h"
+#include "profile.h"
 #include "settings.h"
+#include "sync.h"
 #include "tracking_protection.h"
 
 int main(int argc, char *argv[]) {
+    gchar *requested_profile = nullptr;
+    gchar *startup_url = nullptr;
+    int kept = 1;
+    for (int i = 1; i < argc; i++) {
+        if (g_str_has_prefix(argv[i], "--profile=")) {
+            g_free(requested_profile);
+            requested_profile = g_strdup(argv[i] + strlen("--profile="));
+        } else if (g_strcmp0(argv[i], "--profile") == 0 && i + 1 < argc) {
+            g_free(requested_profile);
+            requested_profile = g_strdup(argv[++i]);
+        } else if (g_str_has_prefix(argv[i], "--url=")) {
+            g_free(startup_url);
+            startup_url = g_strdup(argv[i] + strlen("--url="));
+        } else if (g_strcmp0(argv[i], "--url") == 0 && i + 1 < argc) {
+            g_free(startup_url);
+            startup_url = g_strdup(argv[++i]);
+        } else if (argv[i][0] != '-' && !startup_url) {
+            startup_url = g_strdup(argv[i]);
+        } else {
+            argv[kept++] = argv[i];
+        }
+    }
+    argv[kept] = nullptr;
+    argc = kept;
+
     gtk_init(&argc, &argv);
     g_set_application_name("Kite Browser");
 
+    profile_init(requested_profile);
+    g_free(requested_profile);
+
     load_settings();
-    save_settings();
     history_init();
+
+    if (settings_sync_on_startup() && *settings_sync_folder()) {
+        SyncResult sync_result;
+        std::string sync_error;
+        if (sync_run(settings_sync_folder(), settings_sync_settings(), &sync_result, &sync_error)) {
+            g_print("[Kite] Synced with %s: %d bookmark(s), %d pin(s), %d history entr%s.\n",
+                    settings_sync_folder(), sync_result.bookmarks_added, sync_result.pins_added,
+                    sync_result.history_added, sync_result.history_added == 1 ? "y" : "ies");
+        } else {
+            g_printerr("[Kite] Sync failed: %s\n", sync_error.c_str());
+        }
+    }
+
+    save_settings();
 
     static const char *BROWSER_CSS = R"CSS(
         window.kite-window { background-color: #f1f3f4; }
@@ -91,6 +137,8 @@ int main(int argc, char *argv[]) {
         }
         notebook.kite-notebook > header > tabs > tab button:hover { background-color: rgba(60, 64, 67, 0.12); }
         notebook.kite-notebook > header > tabs > tab label { color: #3c4043; }
+        notebook.kite-split-notebook { border-left: 1px solid rgba(0, 0, 0, 0.08); }
+        paned.kite-split-pane > separator { background-color: rgba(0, 0, 0, 0.10); min-width: 1px; }
         window.kite-dark notebook.kite-notebook > header > tabs > tab label { color: #e8eaed; }
         window.kite-dark notebook.kite-notebook > header > tabs > tab button { color: #9aa0a6; }
         progressbar.kite-progress { min-height: 3px; }
@@ -130,6 +178,8 @@ int main(int argc, char *argv[]) {
             background-color: #202125;
             box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.35);
         }
+        window.kite-dark notebook.kite-split-notebook { border-left-color: #303036; }
+        window.kite-dark paned.kite-split-pane > separator { background-color: #303036; }
     )CSS";
 
     GtkCssProvider *css_provider = gtk_css_provider_new();
@@ -138,17 +188,19 @@ int main(int argc, char *argv[]) {
                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
     init_adblocker();
-    extensions_init();
     tracking_protection_init();
     init_dark_mode();
 
-    WebKitWebContext *context = webkit_web_context_get_default();
+    app_context_init();
+    WebKitWebContext *context = app_webkit_context();
     webkit_web_context_set_cache_model(context, WEBKIT_CACHE_MODEL_WEB_BROWSER);
     privacy_apply_context(context);
     init_kite_pages(context);
-    init_downloads();
+    init_downloads(context);
+    extensions_init(context);
 
-    create_browser_window();
+    create_browser_window(startup_url);
+    g_free(startup_url);
     gtk_main();
 
     privacy_clear_on_exit();
