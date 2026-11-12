@@ -34,6 +34,7 @@ int main() {
     g_setenv("XDG_CONFIG_HOME", config_home, TRUE);
     g_setenv("XDG_DATA_HOME", data_home, TRUE);
     g_setenv("XDG_CACHE_HOME", cache_home, TRUE);
+    g_setenv("TMPDIR", tmp, TRUE);
 
     profile_init(nullptr);
     check(std::string(profile_current_id()) == "default", "default profile selected");
@@ -85,6 +86,40 @@ int main() {
 
     profile_init(nullptr);
     check(std::string(profile_current_id()) == "default", "active marker returns to default");
+
+    check(profile_avatar_text("Work") == "W", "single-word avatar initial");
+    check(profile_avatar_text("Ada Lovelace") == "AL", "two-word avatar initials");
+    check(profile_avatar_text("  ") == "?", "empty avatar name fallback");
+    int default_color = profile_avatar_color("default");
+    check(default_color >= 0 && default_color < 8, "avatar color is in range");
+    check(profile_avatar_color("default") == default_color, "avatar color is deterministic");
+    check(profile_avatar_color("guest") == -1, "guest uses the neutral avatar color");
+    double red = 0, green = 0, blue = 0;
+    profile_avatar_rgb("guest", &red, &green, &blue);
+    check(red == 0.45 && green == 0.50 && blue == 0.56, "guest avatar RGB fallback");
+    profile_avatar_rgb("default", &red, &green, &blue);
+    check(red >= 0 && red <= 1 && green >= 0 && green <= 1 && blue >= 0 && blue <= 1,
+          "named avatar RGB is normalized");
+
+    profile_init_guest();
+    check(profile_is_guest(), "guest profile becomes current");
+    check(std::string(profile_current_id()) == "guest", "guest profile id");
+    check(std::string(profile_current_name()) == "Guest", "guest profile display name");
+    check(std::string(profile_data_dir()) != expected_data, "guest data does not use the named profile directory");
+    std::string guest_data = profile_data_dir();
+    check(g_file_test(guest_data.c_str(), G_FILE_TEST_IS_DIR), "guest data directory created");
+    size_t registry_count = profile_list().size();
+    check(registry_count <= 2, "guest profiles stay out of the registry");
+    bool guest_listed = false;
+    for (const auto &profile : profile_list()) {
+        if (profile.id == "guest")
+            guest_listed = true;
+    }
+    check(!guest_listed, "guest profile is not listed with named profiles");
+    profile_cleanup_guest();
+    check(!profile_is_guest(), "guest profile cleared");
+    check(!g_file_test(guest_data.c_str(), G_FILE_TEST_EXISTS), "guest data removed on cleanup");
+    check(std::string(profile_current_id()) == "default", "cleanup returns to the default profile");
 
     g_free(cache_home);
     g_free(data_home);

@@ -31,12 +31,14 @@ set(KITE_UI_SOURCES
     src/adblock.cpp
     src/app_context.cpp
     src/browser_window.cpp
+    src/command_palette.cpp
     src/dark_mode.cpp
     src/downloads.cpp
     src/errors.cpp
     src/extensions.cpp
     src/find_bar.cpp
     src/kite_pages.cpp
+    src/page_tools.cpp
     src/permissions.cpp
     src/privacy.cpp
     src/tabs.cpp

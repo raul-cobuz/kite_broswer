@@ -31,6 +31,7 @@ int main() {
 
     SessionState saved;
     saved.urls = {"https://example.com/", "kite://newtab", "https://other.test/page"};
+    saved.pinned = {true, false, true};
     saved.active_index = 2;
     session_save(saved);
 
@@ -46,11 +47,18 @@ int main() {
         check(loaded.urls[2] == "https://other.test/page", "third tab restored");
     }
     check(loaded.active_index == 2, "active tab restored");
+    check(loaded.pinned.size() == 3, "pinned flags restored");
+    if (loaded.pinned.size() == 3) {
+        check(loaded.pinned[0], "first tab pinned flag restored");
+        check(!loaded.pinned[1], "second tab unpinned flag restored");
+        check(loaded.pinned[2], "third tab pinned flag restored");
+    }
 
     saved.active_index = 99;
     session_save(saved);
     check(session_load(&loaded), "session reloads");
     check(loaded.active_index == 2, "active tab is clamped");
+    check(loaded.pinned.size() == 3 && loaded.pinned[2], "pinned flags survive a resave");
 
     saved.urls.clear();
     session_save(saved);

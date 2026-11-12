@@ -2,6 +2,7 @@
 
 #include <glib/gstdio.h>
 
+#include <algorithm>
 #include <cmath>
 
 #include "profile.h"
@@ -23,6 +24,13 @@ static bool clear_on_exit = false;
 static gchar *sync_folder = nullptr;
 static bool sync_on_startup = true;
 static bool sync_settings = true;
+static bool newtab_clock = true;
+static bool newtab_weather = false;
+static gchar *newtab_weather_city = nullptr;
+static gchar *newtab_weather_units = nullptr;
+static gchar *newtab_background = nullptr;
+static bool newtab_compact = false;
+static std::vector<NewTabLink> newtab_links;
 
 static gchar *default_download_directory() {
     const gchar *special = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
@@ -59,6 +67,47 @@ static double clamp_zoom(double level) {
     return CLAMP(level, 0.25, 5.0);
 }
 
+static bool boolean_setting(const gchar *group, const gchar *key, bool fallback) {
+    GError *error = nullptr;
+    gboolean value = g_key_file_get_boolean(settings, group, key, &error);
+    if (error) {
+        g_clear_error(&error);
+        return fallback;
+    }
+    return value != FALSE;
+}
+
+static const char *normalize_weather_units(const gchar *units) {
+    return units && g_ascii_strcasecmp(units, "fahrenheit") == 0 ? "fahrenheit" : "celsius";
+}
+
+static void load_newtab_links() {
+    newtab_links.clear();
+    GError *error = nullptr;
+    gint count = g_key_file_get_integer(settings, "newtab", "link_count", &error);
+    if (error) {
+        g_clear_error(&error);
+        return;
+    }
+    count = CLAMP(count, 0, KITE_MAX_NEWTAB_LINKS);
+    for (gint i = 0; i < count; i++) {
+        gchar *title_key = g_strdup_printf("link%d_title", i);
+        gchar *url_key = g_strdup_printf("link%d_url", i);
+        gchar *title = g_key_file_get_string(settings, "newtab", title_key, nullptr);
+        gchar *url = g_key_file_get_string(settings, "newtab", url_key, nullptr);
+        g_free(title_key);
+        g_free(url_key);
+        if (url && *url) {
+            NewTabLink link;
+            link.title = title ? title : "";
+            link.url = url;
+            newtab_links.push_back(link);
+        }
+        g_free(title);
+        g_free(url);
+    }
+}
+
 static gchar *normalize_host(const gchar *host) {
     if (!host)
         return nullptr;
@@ -86,6 +135,9 @@ void load_settings() {
     g_free(search_engine);
     g_free(download_directory);
     g_free(sync_folder);
+    g_free(newtab_weather_city);
+    g_free(newtab_weather_units);
+    g_free(newtab_background);
 
     permission_decisions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     site_zoom_levels = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
@@ -104,6 +156,13 @@ void load_settings() {
     sync_folder = g_strdup("");
     sync_on_startup = true;
     sync_settings = true;
+    newtab_clock = true;
+    newtab_weather = false;
+    newtab_weather_city = g_strdup("");
+    newtab_weather_units = g_strdup("celsius");
+    newtab_background = g_strdup("");
+    newtab_compact = false;
+    newtab_links.clear();
 
     GError *error = nullptr;
     if (!g_key_file_load_from_file(settings, settings_file, G_KEY_FILE_NONE, &error)) {
@@ -198,6 +257,21 @@ void load_settings() {
         sync_settings = sync_settings_enabled;
     }
 
+    newtab_clock = boolean_setting("newtab", "clock", true);
+    newtab_weather = boolean_setting("newtab", "weather", false);
+    newtab_compact = boolean_setting("newtab", "compact", false);
+    g_free(newtab_weather_city);
+    newtab_weather_city = string_setting("newtab", "weather_city", "");
+    g_free(newtab_weather_units);
+    {
+        gchar *units = string_setting("newtab", "weather_units", "celsius");
+        newtab_weather_units = g_strdup(normalize_weather_units(units));
+        g_free(units);
+    }
+    g_free(newtab_background);
+    newtab_background = string_setting("newtab", "background", "");
+    load_newtab_links();
+
     gchar *exceptions = g_key_file_get_string(settings, "privacy", "adblock_exceptions", nullptr);
     if (exceptions) {
         gchar **hosts = g_strsplit(exceptions, ";", -1);
@@ -245,6 +319,23 @@ void save_settings() {
     g_key_file_set_string(settings, "sync", "folder", settings_sync_folder());
     g_key_file_set_boolean(settings, "sync", "on_startup", sync_on_startup);
     g_key_file_set_boolean(settings, "sync", "include_settings", sync_settings);
+
+    g_key_file_remove_group(settings, "newtab", nullptr);
+    g_key_file_set_boolean(settings, "newtab", "clock", newtab_clock);
+    g_key_file_set_boolean(settings, "newtab", "weather", newtab_weather);
+    g_key_file_set_string(settings, "newtab", "weather_city", settings_newtab_weather_city());
+    g_key_file_set_string(settings, "newtab", "weather_units", settings_newtab_weather_units());
+    g_key_file_set_string(settings, "newtab", "background", settings_newtab_background());
+    g_key_file_set_boolean(settings, "newtab", "compact", newtab_compact);
+    g_key_file_set_integer(settings, "newtab", "link_count", (gint)newtab_links.size());
+    for (size_t i = 0; i < newtab_links.size(); i++) {
+        gchar *title_key = g_strdup_printf("link%zu_title", i);
+        gchar *url_key = g_strdup_printf("link%zu_url", i);
+        g_key_file_set_string(settings, "newtab", title_key, newtab_links[i].title.c_str());
+        g_key_file_set_string(settings, "newtab", url_key, newtab_links[i].url.c_str());
+        g_free(title_key);
+        g_free(url_key);
+    }
 
     g_key_file_remove_key(settings, "privacy", "adblock_exceptions", nullptr);
     if (adblock_exceptions && g_hash_table_size(adblock_exceptions) > 0) {
@@ -500,4 +591,108 @@ bool settings_sync_settings() {
 
 void settings_set_sync_settings(bool enabled) {
     sync_settings = enabled;
+}
+
+bool settings_newtab_clock() {
+    return newtab_clock;
+}
+
+void settings_set_newtab_clock(bool enabled) {
+    newtab_clock = enabled;
+}
+
+bool settings_newtab_weather() {
+    return newtab_weather;
+}
+
+void settings_set_newtab_weather(bool enabled) {
+    newtab_weather = enabled;
+}
+
+const gchar *settings_newtab_weather_city() {
+    return newtab_weather_city ? newtab_weather_city : "";
+}
+
+void settings_set_newtab_weather_city(const gchar *city) {
+    g_free(newtab_weather_city);
+    gchar *trimmed = city ? g_strstrip(g_strdup(city)) : g_strdup("");
+    newtab_weather_city = trimmed;
+}
+
+const gchar *settings_newtab_weather_units() {
+    return newtab_weather_units ? newtab_weather_units : "celsius";
+}
+
+void settings_set_newtab_weather_units(const gchar *units) {
+    g_free(newtab_weather_units);
+    newtab_weather_units = g_strdup(normalize_weather_units(units));
+}
+
+const gchar *settings_newtab_background() {
+    return newtab_background ? newtab_background : "";
+}
+
+void settings_set_newtab_background(const gchar *value) {
+    g_free(newtab_background);
+    gchar *trimmed = value ? g_strstrip(g_strdup(value)) : g_strdup("");
+    newtab_background = trimmed;
+}
+
+bool settings_newtab_compact() {
+    return newtab_compact;
+}
+
+void settings_set_newtab_compact(bool enabled) {
+    newtab_compact = enabled;
+}
+
+std::vector<NewTabLink> settings_newtab_links() {
+    return newtab_links;
+}
+
+void settings_set_newtab_links(const std::vector<NewTabLink> &links) {
+    newtab_links.clear();
+    for (const auto &link : links) {
+        if (link.url.empty())
+            continue;
+        newtab_links.push_back(link);
+        if ((int)newtab_links.size() >= KITE_MAX_NEWTAB_LINKS)
+            break;
+    }
+}
+
+bool settings_newtab_link_add(const gchar *title, const gchar *url) {
+    if (!url || !*url)
+        return false;
+    for (const auto &link : newtab_links) {
+        if (link.url == url) {
+            if (title && *title) {
+                for (auto &existing : newtab_links) {
+                    if (existing.url == url) {
+                        existing.title = title;
+                        break;
+                    }
+                }
+                return true;
+            }
+            return false;
+        }
+    }
+    if ((int)newtab_links.size() >= KITE_MAX_NEWTAB_LINKS)
+        return false;
+    NewTabLink link;
+    link.title = title ? title : "";
+    link.url = url;
+    newtab_links.push_back(link);
+    return true;
+}
+
+bool settings_newtab_link_remove(const gchar *url) {
+    if (!url || !*url)
+        return false;
+    auto end = std::remove_if(newtab_links.begin(), newtab_links.end(),
+                              [url](const NewTabLink &link) { return link.url == url; });
+    bool removed = end != newtab_links.end();
+    newtab_links.erase(end, newtab_links.end());
+    return removed;
 }

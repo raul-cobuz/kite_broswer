@@ -196,11 +196,50 @@ static std::string favicon(const std::string &host, bool dark) {
     return "<span class=\"fav\" style=\"" + tile_style(host, dark) + "\">" + html_escape(letter) + "</span>";
 }
 
+static std::string css_url_value(const std::string &value) {
+    if (value.empty())
+        return "";
+    std::string url = value;
+    gchar *scheme = g_uri_parse_scheme(value.c_str());
+    if (!scheme) {
+        gchar *uri = g_filename_to_uri(value.c_str(), nullptr, nullptr);
+        if (uri) {
+            url = uri;
+            g_free(uri);
+        }
+    } else {
+        g_free(scheme);
+    }
+
+    std::string escaped;
+    for (char c : url) {
+        if (c == '\\' || c == '"')
+            escaped.push_back('\\');
+        if (c == '\n' || c == '\r')
+            escaped.push_back(' ');
+        else
+            escaped.push_back(c);
+    }
+    return escaped;
+}
+
+static std::string avatar_css_class(const std::string &id) {
+    int color = profile_avatar_color(id);
+    return color < 0 ? "avatar-guest" : "avatar-color-" + std::to_string(color);
+}
+
 static const char *KITE_MARK_SVG =
-    "<svg class=\"kite-mark\" viewBox=\"0 0 64 64\" aria-hidden=\"true\">"
-    "<path d=\"M32 3 55 25 32 61 9 25Z\" fill=\"var(--accent)\"/>"
-    "<path d=\"M32 3 55 25 32 61Z\" fill=\"var(--accent-strong)\" opacity=\".82\"/>"
-    "<path d=\"M32 3v58M9 25h46\" fill=\"none\" stroke=\"rgba(255,255,255,.42)\" stroke-width=\"1.6\"/>"
+    "<svg class=\"kite-mark\" viewBox=\"0 0 128 128\" aria-hidden=\"true\">"
+    "<defs><linearGradient id=\"kite-logo-bg\" x1=\"18\" y1=\"12\" x2=\"110\" y2=\"118\" gradientUnits=\"userSpaceOnUse\">"
+    "<stop offset=\"0\" stop-color=\"#4f9cf9\"/><stop offset=\"1\" stop-color=\"#1a73e8\"/>"
+    "</linearGradient></defs>"
+    "<rect x=\"8\" y=\"8\" width=\"112\" height=\"112\" rx=\"26\" fill=\"url(#kite-logo-bg)\"/>"
+    "<path d=\"M64 26 94 58 64 102 34 58Z\" fill=\"#ffffff\"/>"
+    "<path d=\"M64 26 64 102 34 58Z\" fill=\"#dbe8fc\"/>"
+    "<path d=\"M64 58 94 58 64 102Z\" fill=\"#b9d2fa\"/>"
+    "<path d=\"M34 58 64 58 64 102Z\" fill=\"#eef4fe\"/>"
+    "<path d=\"M64 26 94 58 64 58Z\" fill=\"#f6f9ff\"/>"
+    "<path d=\"M64 102 88 121 48 121Z\" fill=\"#ffffff\" opacity=\".9\"/>"
     "</svg>";
 
 static const char *CLOCK_SVG =
@@ -725,8 +764,22 @@ html[data-theme="dark"] .btn.primary { color: #121214; }
 .profile-title strong { font-size: 14.5px; }
 .profile-meta { margin: 6px 0 0; color: var(--muted); font-size: 12px; word-break: break-all; }
 .profile-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.quicklink-list { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
+.quicklink-row {
+  display: grid;
+  grid-template-columns: minmax(90px, .8fr) minmax(120px, 1.6fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 12.5px;
+}
+.quicklink-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.quicklink-url { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 620px) {
-  .settings-form, .settings-form.wide { grid-template-columns: 1fr; }
+  .settings-form, .settings-form.wide, .quicklink-row { grid-template-columns: 1fr; }
 }
 .newtab-notice {
   width: 100%;
@@ -734,6 +787,83 @@ html[data-theme="dark"] .btn.primary { color: #121214; }
   margin: 18px auto 0;
   text-align: left;
 }
+
+/* Start-page customization */
+.newtab-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+.newtab-clock .clock-time {
+  color: var(--text);
+  font-size: clamp(30px, 4vw, 40px);
+  font-weight: 600;
+  letter-spacing: -.04em;
+  line-height: 1.05;
+}
+.newtab-clock .clock-date {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+.weather-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px auto 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.2;
+  text-decoration: none;
+}
+.weather-widget[hidden] { display: none; }
+.weather-widget:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.weather-widget .weather-icon { font-size: 16px; }
+.weather-widget .weather-temp { color: var(--text); font-weight: 700; font-size: 14px; }
+.weather-widget:hover .weather-temp { color: var(--accent); }
+.weather-widget .weather-city { color: var(--muted); font-size: 11.5px; }
+.newtab-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 16px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.newtab-tools a { color: var(--muted); }
+.newtab-tools a:hover { color: var(--accent); text-decoration: none; }
+body.newtab-page.compact-layout .hero {
+  flex: none;
+  justify-content: flex-start;
+  padding-top: clamp(22px, 5vh, 46px);
+  padding-bottom: 28px;
+}
+body.newtab-page.compact-layout .hero .kite-mark { width: 52px; height: 52px; }
+body.newtab-page.compact-layout .tagline { margin: 6px 0 18px; }
+body.newtab-page.custom-bg { background-size: cover; background-position: center; background-attachment: fixed; }
+body.newtab-page.custom-bg .hero,
+body.newtab-page.custom-bg .shelf { position: relative; }
+.custom-quicklinks .pin-card .tile { background: var(--tile-bg, var(--bg-soft)); }
+.profile-card .ext-icon.avatar-color-0, .avatar-color-0 { background: #1a73e8; color: #fff; }
+.profile-card .ext-icon.avatar-color-1, .avatar-color-1 { background: #d93025; color: #fff; }
+.profile-card .ext-icon.avatar-color-2, .avatar-color-2 { background: #2e9e60; color: #fff; }
+.profile-card .ext-icon.avatar-color-3, .avatar-color-3 { background: #d98a10; color: #fff; }
+.profile-card .ext-icon.avatar-color-4, .avatar-color-4 { background: #8c59db; color: #fff; }
+.profile-card .ext-icon.avatar-color-5, .avatar-color-5 { background: #0d9eaa; color: #fff; }
+.profile-card .ext-icon.avatar-color-6, .avatar-color-6 { background: #e65a8b; color: #fff; }
+.profile-card .ext-icon.avatar-color-7, .avatar-color-7 { background: #737d89; color: #fff; }
+.profile-card .ext-icon.avatar-guest, .avatar-guest { background: #6b7280; color: #fff; }
+.guest-card { border-style: dashed; }
 
 .shelf {
   width: 100%;
@@ -1015,6 +1145,68 @@ static const char *SEARCH_JS = R"JS(
 </script>
 )JS";
 
+static const char *NEWTAB_JS = R"JS(
+<script>
+(function () {
+  var timeEl = document.getElementById('kite-clock-time');
+  var dateEl = document.getElementById('kite-clock-date');
+  function tick() {
+    if (!timeEl) return;
+    var now = new Date();
+    timeEl.textContent = now.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    if (dateEl) {
+      dateEl.textContent = now.toLocaleDateString([], {weekday: 'long', month: 'long', day: 'numeric'});
+    }
+  }
+  tick();
+  if (timeEl) setInterval(tick, 15000);
+
+  var widget = document.getElementById('kite-weather');
+  if (!widget) return;
+  var city = widget.getAttribute('data-city') || '';
+  var units = widget.getAttribute('data-units') || 'celsius';
+  if (!city) return;
+
+  var icons = {'0': '☀', '1': '🌤', '2': '⛅', '3': '☁', '45': '🌫', '48': '🌫',
+               '51': '🌦', '53': '🌦', '55': '🌧', '61': '🌧', '63': '🌧', '65': '🌧',
+               '66': '🌧', '67': '🌧', '71': '🌨', '73': '🌨', '75': '❄', '77': '🌨',
+               '80': '🌦', '81': '🌧', '82': '⛈', '85': '🌨', '86': '❄', '95': '⛈',
+               '96': '⛈', '99': '⛈'};
+  var descriptions = {'0': 'Clear', '1': 'Mostly clear', '2': 'Partly cloudy', '3': 'Overcast',
+                      '45': 'Fog', '48': 'Fog', '51': 'Light drizzle', '53': 'Drizzle',
+                      '55': 'Heavy drizzle', '61': 'Light rain', '63': 'Rain', '65': 'Heavy rain',
+                      '66': 'Freezing rain', '67': 'Freezing rain', '71': 'Light snow',
+                      '73': 'Snow', '75': 'Heavy snow', '77': 'Snow grains', '80': 'Light showers',
+                      '81': 'Showers', '82': 'Heavy showers', '85': 'Snow showers',
+                      '86': 'Snow showers', '95': 'Thunderstorm', '96': 'Thunderstorm',
+                      '99': 'Thunderstorm'};
+
+  fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=' +
+        encodeURIComponent(city))
+    .then(function (response) { return response.json(); })
+    .then(function (geo) {
+      if (!geo.results || !geo.results.length) throw new Error('city not found');
+      var location = geo.results[0];
+      return fetch('https://api.open-meteo.com/v1/forecast?current=temperature_2m,weather_code' +
+                   '&temperature_unit=' + encodeURIComponent(units) +
+                   '&latitude=' + location.latitude + '&longitude=' + location.longitude);
+    })
+    .then(function (response) { return response.json(); })
+    .then(function (data) {
+      if (!data.current) throw new Error('weather unavailable');
+      var code = String(data.current.weather_code);
+      var temperature = Math.round(data.current.temperature_2m);
+      document.getElementById('kite-weather-icon').textContent = icons[code] || '🌡';
+      document.getElementById('kite-weather-temp').textContent =
+        temperature + '°' + (units === 'fahrenheit' ? 'F' : 'C');
+      document.getElementById('kite-weather-desc').textContent = descriptions[code] || 'Weather';
+      widget.hidden = false;
+    })
+    .catch(function () { widget.hidden = true; });
+})();
+</script>
+)JS";
+
 static std::string page_shell(const std::string &title, const std::string &body, const std::string &body_class = "",
                               bool force_dark = false) {
     bool dark = force_dark || settings_dark_mode();
@@ -1138,6 +1330,75 @@ static std::string pinned_links_section(bool dark) {
     return html;
 }
 
+static std::string newtab_links_section(bool dark) {
+    std::vector<NewTabLink> links = settings_newtab_links();
+    int count = (int)links.size();
+    int max_links = KITE_MAX_NEWTAB_LINKS;
+
+    std::string html =
+        "<section class=\"quicklinks custom-quicklinks\"><div class=\"quicklinks-head\"><h2>Quick links</h2>"
+        "<div class=\"quicklinks-links\"><span class=\"quicklinks-note\">" +
+        std::to_string(count) + " of " + std::to_string(max_links) + "</span>";
+    if (count < max_links) {
+        html += "<details class=\"pin-add\"><summary><span class=\"plus\">+</span> Add link</summary>"
+                "<form class=\"pin-form\" action=\"kite://newtab/link-add\" method=\"get\">"
+                "<input type=\"text\" name=\"title\" placeholder=\"Title (optional)\" aria-label=\"Link title\" "
+                "autocomplete=\"off\">"
+                "<input type=\"text\" name=\"url\" placeholder=\"https://example.com\" aria-label=\"Link URL\" "
+                "autocomplete=\"off\" required>"
+                "<button class=\"btn primary\" type=\"submit\">Add</button></form></details>";
+    } else {
+        html += "<span class=\"quicklinks-note\">Remove one to add another</span>";
+    }
+    html += "</div></div>";
+
+    if (links.empty()) {
+        html += "<p class=\"quicklinks-empty\">Add up to twelve custom shortcuts to this start page. "
+                "Named profiles and sync are not required.</p>";
+    } else {
+        html += "<div class=\"shortcuts pinned-shortcuts custom-shortcuts\">";
+        for (const auto &link : links) {
+            std::string host = url_host(link.url.c_str());
+            std::string label = link.title.empty() ? display_host(host) : link.title;
+            if (label.empty())
+                label = link.url;
+            std::string initial(1, host_initial(host));
+            std::string remove_href =
+                "kite://newtab/link-remove?url=" + escape_query_value(link.url);
+            html += "<div class=\"pin-card\"><a class=\"pin-remove\" href=\"" +
+                    html_escape(remove_href) + "\" title=\"Remove link\" aria-label=\"Remove " +
+                    html_escape(label) + "\">&times;</a>";
+            html += "<a class=\"shortcut\" href=\"" + html_escape(link.url) + "\" title=\"" +
+                    html_escape(link.url) + "\"><span class=\"tile\" style=\"" + tile_style(host, dark) + "\">" +
+                    html_escape(initial) + "</span><span class=\"name\">" + html_escape(label) +
+                    "</span></a></div>";
+        }
+        html += "</div>";
+    }
+    html += "</section>";
+    return html;
+}
+
+static std::string newtab_clock_widget() {
+    return "<div class=\"newtab-clock\"><span class=\"clock-time\" id=\"kite-clock-time\">--:--</span>"
+           "<span class=\"clock-date\" id=\"kite-clock-date\"></span></div>";
+}
+
+static std::string newtab_weather_widget() {
+    if (!settings_newtab_weather() || !*settings_newtab_weather_city())
+        return "";
+    std::string city = settings_newtab_weather_city();
+    std::string units = settings_newtab_weather_units();
+    std::string search_url = "https://www.google.com/search?q=weather+" + escape_query_value(city);
+    return "<a class=\"weather-widget\" id=\"kite-weather\" href=\"" + html_escape(search_url) +
+           "\" data-city=\"" + html_escape(city) + "\" data-units=\"" + html_escape(units) +
+           "\" hidden><span class=\"weather-icon\" id=\"kite-weather-icon\">☀</span>"
+           "<span class=\"weather-temp\" id=\"kite-weather-temp\">--°</span>"
+           "<span class=\"weather-desc\" id=\"kite-weather-desc\"></span>"
+           "<span class=\"weather-city\">" +
+           html_escape(city) + "</span></a>";
+}
+
 static std::string entry_row(const HistoryEntry &entry, bool show_time, const std::string &forget_href, bool dark) {
     std::string title = entry.title.empty() ? entry.url : entry.title;
     std::string host = host_label(entry.url, entry.host);
@@ -1189,8 +1450,10 @@ static std::string newtab_page(bool incognito, const std::string &path, const gc
     std::vector<HistoryEntry> recent;
     std::vector<HistoryEntry> bookmarks;
     bool has_shelf = false;
+    bool compact = settings_newtab_compact();
     std::string notice;
-    bool acted = path == "/pin" || path == "/unpin";
+    bool acted = path == "/pin" || path == "/unpin" || path == "/link-add" || path == "/link-remove" ||
+                 path == "/layout";
 
     if (!incognito) {
         if (path == "/pin") {
@@ -1221,15 +1484,51 @@ static std::string newtab_page(bool incognito, const std::string &path, const gc
             std::string url = query_param(query, "url");
             if (!url.empty() && pinned_link_remove(url.c_str()))
                 notice = "<div class=\"notice\">Pinned link removed.</div>";
+        } else if (path == "/link-add") {
+            std::string raw_url = query_param(query, "url");
+            std::string title = query_param(query, "title");
+            if (raw_url.empty()) {
+                notice = "<div class=\"notice\">Enter a URL for the quick link.</div>";
+            } else {
+                std::string url = normalize_url(raw_url);
+                if (settings_newtab_link_add(title.c_str(), url.c_str())) {
+                    notice = "<div class=\"notice\">Added that quick link to the start page.</div>";
+                } else {
+                    notice = "<div class=\"notice\">That link is already present, or the twelve-link limit "
+                             "has been reached.</div>";
+                }
+            }
+        } else if (path == "/link-remove") {
+            std::string url = query_param(query, "url");
+            if (!url.empty() && settings_newtab_link_remove(url.c_str())) {
+                save_settings();
+                notice = "<div class=\"notice\">Quick link removed.</div>";
+            }
+        } else if (path == "/layout") {
+            std::string value = query_param(query, "compact");
+            settings_set_newtab_compact(value == "1" || value == "on" || value == "true");
+            save_settings();
+            notice = std::string("<div class=\"notice\">Switched to ") +
+                     (settings_newtab_compact() ? "compact" : "expanded") + " start-page layout.</div>";
         }
+        if (path == "/link-add")
+            save_settings();
 
         recent = history_recent(12);
         bookmarks = bookmarks_list();
         has_shelf = !recent.empty() || !bookmarks.empty();
     }
 
+    std::string background = settings_newtab_background();
+    bool custom_bg = !background.empty();
+
     std::string body = topbar(incognito);
-    body += std::string("<main class=\"hero") + (has_shelf ? " compact" : "") + "\">";
+    if (custom_bg) {
+        std::string overlay = dark ? "rgba(23,24,27,.80)" : "rgba(248,249,250,.74)";
+        body += "<style>body.newtab-page.custom-bg{background-image:linear-gradient(" + overlay + "," +
+                overlay + "),url(\"" + css_url_value(background) + "\");}</style>";
+    }
+    body += std::string("<main class=\"hero") + (has_shelf || compact ? " compact" : "") + "\">";
 
     if (incognito) {
         body += std::string(INCOGNITO_SVG) + "<div class=\"badge\">Incognito</div>"
@@ -1248,13 +1547,21 @@ static std::string newtab_page(bool incognito, const std::string &path, const gc
         return page_shell("New incognito tab", body, "newtab-page incognito-page", true);
     }
 
+    if (settings_newtab_clock())
+        body += newtab_clock_widget();
     body += std::string(KITE_MARK_SVG) + "<h1 class=\"wordmark\">Kite</h1>"
             "<p class=\"tagline\">Search the web or type an address to get going.</p>";
     body += search_form();
     body += recent_searches_bar();
+    body += newtab_weather_widget();
     if (!notice.empty())
         body += "<div class=\"newtab-notice\">" + notice + "</div>";
     body += pinned_links_section(dark);
+    body += newtab_links_section(dark);
+    body += "<div class=\"newtab-tools\"><a href=\"kite://settings\">Customize start page</a>"
+            "<a href=\"kite://newtab/layout?compact=" +
+            std::string(compact ? "0" : "1") + "\">" + (compact ? "Expanded layout" : "Compact layout") +
+            "</a></div>";
     body += "</main>";
 
     if (has_shelf) {
@@ -1267,7 +1574,15 @@ static std::string newtab_page(bool incognito, const std::string &path, const gc
     if (acted)
         body += "<script>try{history.replaceState(null,'','kite://newtab');}catch(e){}</script>";
     body += SEARCH_JS;
-    return page_shell("New tab", body, has_shelf ? "newtab-page has-shelf" : "newtab-page", false);
+    body += NEWTAB_JS;
+    std::string body_class = "newtab-page";
+    if (has_shelf)
+        body_class += " has-shelf";
+    if (compact)
+        body_class += " compact-layout";
+    if (custom_bg)
+        body_class += " custom-bg";
+    return page_shell("New tab", body, body_class, false);
 }
 
 static std::string history_page(bool incognito, const std::string &path, const gchar *query) {
@@ -1608,12 +1923,12 @@ static std::string sync_redirect_page() {
            "</head><body></body></html>";
 }
 
-static std::string settings_redirect_page() {
+static std::string settings_redirect_page(const char *notice = "saved") {
+    std::string url = std::string("kite://settings?notice=") + (notice ? notice : "saved");
     return "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-           "<meta http-equiv=\"refresh\" content=\"0; url=kite://settings?notice=saved\">"
-           "<title>Settings</title>"
-           "<script>window.location.replace('kite://settings?notice=saved');</script>"
-           "</head><body></body></html>";
+           "<meta http-equiv=\"refresh\" content=\"0; url=" +
+           url + "\"><title>Settings</title><script>window.location.replace('" + url +
+           "');</script></head><body></body></html>";
 }
 
 static std::string settings_page(bool incognito, const std::string &path, const gchar *query) {
@@ -1634,9 +1949,85 @@ static std::string settings_page(bool incognito, const std::string &path, const 
         return settings_redirect_page();
     }
 
+    if (path == "/save-newtab") {
+        if (query_param(query, "remove_background") == "1")
+            settings_set_newtab_background("");
+        else
+            settings_set_newtab_background(query_param(query, "background").c_str());
+        settings_set_newtab_clock(query_param(query, "clock") == "1" || query_param(query, "clock") == "on");
+        settings_set_newtab_weather(query_param(query, "weather") == "1" ||
+                                    query_param(query, "weather") == "on");
+        settings_set_newtab_weather_city(query_param(query, "weather_city").c_str());
+        settings_set_newtab_weather_units(query_param(query, "weather_units").c_str());
+        settings_set_newtab_compact(query_param(query, "compact") == "1" ||
+                                    query_param(query, "compact") == "on");
+        save_settings();
+        return settings_redirect_page("newtab");
+    }
+
+    if (path == "/newtab-bg-choose") {
+        GtkWidget *dialog = gtk_file_chooser_dialog_new(
+            "Choose a start-page background", browser.main_window ? GTK_WINDOW(browser.main_window) : nullptr,
+            GTK_FILE_CHOOSER_ACTION_OPEN, "Cancel", GTK_RESPONSE_CANCEL, "Use image", GTK_RESPONSE_ACCEPT,
+            nullptr);
+        GtkFileFilter *filter = gtk_file_filter_new();
+        gtk_file_filter_set_name(filter, "Images");
+        gtk_file_filter_add_pixbuf_formats(filter);
+        gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), filter);
+        const gchar *pictures = g_get_user_special_dir(G_USER_DIRECTORY_PICTURES);
+        if (pictures && *pictures)
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), pictures);
+        if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+            gchar *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+            if (filename) {
+                gchar *uri = g_filename_to_uri(filename, nullptr, nullptr);
+                if (uri) {
+                    settings_set_newtab_background(uri);
+                    save_settings();
+                    g_free(uri);
+                }
+                g_free(filename);
+            }
+        }
+        gtk_widget_destroy(dialog);
+        return settings_redirect_page("newtab");
+    }
+
+    if (path == "/link-add") {
+        std::string raw_url = query_param(query, "url");
+        std::string title = query_param(query, "title");
+        if (!raw_url.empty()) {
+            std::string url = normalize_url(raw_url);
+            settings_newtab_link_add(title.c_str(), url.c_str());
+            save_settings();
+        }
+        return settings_redirect_page("newtab");
+    }
+
+    if (path == "/link-remove") {
+        settings_newtab_link_remove(query_param(query, "url").c_str());
+        save_settings();
+        return settings_redirect_page("newtab");
+    }
+
+    if (path == "/default-browser") {
+        GError *spawn_error = nullptr;
+        gchar *argv[] = {(gchar *)"xdg-settings", (gchar *)"set", (gchar *)"default-web-browser",
+                         (gchar *)"kite.desktop", nullptr};
+        g_spawn_async(nullptr, argv, nullptr, G_SPAWN_DEFAULT, nullptr, nullptr, nullptr, &spawn_error);
+        g_clear_error(&spawn_error);
+        return settings_redirect_page("default");
+    }
+
     std::string notice;
-    if (query_param(query, "notice") == "saved")
+    std::string notice_key = query_param(query, "notice");
+    if (notice_key == "saved")
         notice = "<div class=\"notice\">Search settings saved.</div>";
+    else if (notice_key == "newtab")
+        notice = "<div class=\"notice\">Start-page settings saved.</div>";
+    else if (notice_key == "default")
+        notice = "<div class=\"notice\">Asked xdg-settings to make Kite the default browser. "
+                 "The desktop environment may ask you to confirm.</div>";
 
     std::string current = settings_search_engine() ? settings_search_engine() : "google";
     std::string options;
@@ -1647,7 +2038,7 @@ static std::string settings_page(bool incognito, const std::string &path, const 
 
     std::string body = topbar(false);
     body += "<main class=\"content\"><div class=\"page-header\"><h1>Settings</h1>"
-            "<span class=\"count\">Search</span></div>" +
+            "<span class=\"count\">Browser</span></div>" +
             notice;
     body += "<section class=\"settings-card\"><h2>Search engine</h2>"
             "<p>Kite uses this engine when you type a query in the address bar or on the start page.</p>"
@@ -1660,6 +2051,70 @@ static std::string settings_page(bool incognito, const std::string &path, const 
             std::string(settings_google_fallback() ? " checked" : "") +
             "><span>If Google shows a robot-verification page, retry the search with DuckDuckGo.</span></label>"
             "</form></section>";
+
+    const gchar *background = settings_newtab_background();
+    std::vector<NewTabLink> quick_links = settings_newtab_links();
+    std::string units = settings_newtab_weather_units() ? settings_newtab_weather_units() : "celsius";
+    body += "<section class=\"settings-card\"><h2>Start page</h2>"
+            "<p>Personalise kite://newtab with a background image, a live clock, current weather and your own "
+            "quick links. Pinned shortcuts saved on the start page are separate from these custom links.</p>"
+            "<form action=\"kite://settings/save-newtab\" method=\"get\">"
+            "<div class=\"settings-form wide\"><input type=\"text\" name=\"background\" value=\"" +
+            html_escape(background ? background : "") +
+            "\" placeholder=\"Image URL or file path (optional)\" autocomplete=\"off\">"
+            "<a class=\"btn\" href=\"kite://settings/newtab-bg-choose\">Browse…</a>"
+            "<button class=\"btn primary\" type=\"submit\">Save start page</button></div>"
+            "<label class=\"settings-check\" style=\"margin-top:12px\"><input type=\"checkbox\" "
+            "name=\"remove_background\" value=\"1\"><span>Remove the background image</span></label>"
+            "<label class=\"settings-check\"><input type=\"checkbox\" name=\"clock\" value=\"1\"" +
+            std::string(settings_newtab_clock() ? " checked" : "") +
+            "><span>Show a clock and today's date</span></label>"
+            "<label class=\"settings-check\"><input type=\"checkbox\" name=\"compact\" value=\"1\"" +
+            std::string(settings_newtab_compact() ? " checked" : "") +
+            "><span>Use the compact layout (mark, search box and links close together)</span></label>"
+            "<label class=\"settings-check\"><input type=\"checkbox\" name=\"weather\" value=\"1\"" +
+            std::string(settings_newtab_weather() ? " checked" : "") +
+            "><span>Show current weather from Open-Meteo</span></label>"
+            "<div class=\"settings-form wide\" style=\"margin-top:10px\">"
+            "<input type=\"text\" name=\"weather_city\" value=\"" +
+            html_escape(settings_newtab_weather_city()) +
+            "\" placeholder=\"City for the weather widget\" autocomplete=\"off\">"
+            "<select name=\"weather_units\"><option value=\"celsius\"" +
+            std::string(units == "fahrenheit" ? "" : " selected") +
+            ">Celsius</option><option value=\"fahrenheit\"" +
+            std::string(units == "fahrenheit" ? " selected" : "") +
+            ">Fahrenheit</option></select><span></span></div>"
+            "</form></section>";
+
+    body += "<section class=\"settings-card\"><h2>Start-page quick links</h2>"
+            "<p>Up to " + std::to_string(KITE_MAX_NEWTAB_LINKS) +
+            " custom shortcuts appear below the pinned shortcuts on the start page.</p>";
+    if (quick_links.empty()) {
+        body += "<p class=\"ext-meta\">No custom quick links yet.</p>";
+    } else {
+        body += "<div class=\"quicklink-list\">";
+        for (const auto &link : quick_links) {
+            std::string label = link.title.empty() ? link.url : link.title;
+            body += "<div class=\"quicklink-row\"><span class=\"quicklink-name\">" + html_escape(label) +
+                    "</span><span class=\"quicklink-url\">" + html_escape(link.url) +
+                    "</span><a class=\"btn danger\" href=\"kite://settings/link-remove?url=" +
+                    escape_query_value(link.url) + "\">Remove</a></div>";
+        }
+        body += "</div>";
+    }
+    if ((int)quick_links.size() < KITE_MAX_NEWTAB_LINKS) {
+        body += "<form class=\"settings-form wide\" action=\"kite://settings/link-add\" method=\"get\">"
+                "<input type=\"text\" name=\"title\" placeholder=\"Title (optional)\" autocomplete=\"off\">"
+                "<input type=\"text\" name=\"url\" placeholder=\"https://example.com\" required "
+                "autocomplete=\"off\"><button class=\"btn primary\" type=\"submit\">Add link</button></form>";
+    }
+    body += "</section>";
+
+    body += "<section class=\"settings-card\"><h2>Default browser</h2>"
+            "<p>Make Kite open links from other applications. This asks xdg-settings to register "
+            "<code>kite.desktop</code>; your desktop environment may show a confirmation.</p>"
+            "<a class=\"btn primary\" href=\"kite://settings/default-browser\">Set Kite as default browser</a>"
+            "</section>";
     body += "<section class=\"settings-card\"><h2>About the Google fallback</h2>"
             "<p>Google sometimes treats automated WebKit browsers as suspicious and redirects a search to "
             "<code>/sorry/</code>. When that happens Kite recovers your query and loads DuckDuckGo results "
@@ -1732,6 +2187,18 @@ static std::string profiles_page(bool incognito, const std::string &path, const 
                 "content-page", false);
         }
         notice = "<div class=\"notice\">That profile is already active.</div>";
+    } else if (path == "/guest") {
+        if (profile_is_guest()) {
+            notice = "<div class=\"notice\">You are already browsing as a guest.</div>";
+        } else {
+            switch_profile_and_restart("guest");
+            return page_shell(
+                "Switching to Guest",
+                topbar(false) +
+                    "<main class=\"content\"><div class=\"page-header\"><h1>Switching to Guest</h1></div>"
+                    "<div class=\"empty-state\">Kite is restarting with a throwaway guest profile.</div></main>",
+                "content-page", false);
+        }
     }
 
     std::vector<ProfileInfo> profiles = profile_list();
@@ -1749,9 +2216,9 @@ static std::string profiles_page(bool incognito, const std::string &path, const 
 
     body += "<div class=\"profile-list\">";
     for (const auto &profile : profiles) {
-        std::string initial(1, host_initial(profile.name));
+        std::string initial = profile_avatar_text(profile.name);
         body += "<article class=\"profile-card" + std::string(profile.current ? " current" : "") +
-                "\"><div class=\"ext-icon\">" + html_escape(initial) +
+                "\"><div class=\"ext-icon " + avatar_css_class(profile.id) + "\">" + html_escape(initial) +
                 "</div><div class=\"profile-main\"><div class=\"profile-title\"><strong>" +
                 html_escape(profile.name) + "</strong>";
         if (profile.is_default)
@@ -1778,6 +2245,19 @@ static std::string profiles_page(bool incognito, const std::string &path, const 
         }
         body += "</div></div></article>";
     }
+
+    body += "<article class=\"profile-card guest-card" + std::string(profile_is_guest() ? " current" : "") +
+            "\"><div class=\"ext-icon avatar-guest\">" +
+            html_escape(profile_avatar_text("Guest")) +
+            "</div><div class=\"profile-main\"><div class=\"profile-title\"><strong>Guest</strong>"
+            "<span class=\"ext-state\">Temporary</span>" +
+            std::string(profile_is_guest() ? "<span class=\"ext-state enabled\">Current</span>" : "") +
+            "</div><p class=\"profile-meta\">A throwaway profile with no history, cookies or saved settings. "
+            "Everything is deleted when Kite closes.</p><div class=\"profile-actions\">" +
+            (profile_is_guest()
+                 ? "<span class=\"ext-meta\">Guest data is removed on exit.</span>"
+                 : "<a class=\"btn primary\" href=\"kite://profiles/guest\">Browse as Guest</a>") +
+            "</div></div></article>";
     body += "</div>";
 
     body += "<section class=\"settings-card\" style=\"margin-top:18px\"><h2>Paths</h2>"

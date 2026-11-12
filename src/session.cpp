@@ -14,6 +14,7 @@ bool session_load(SessionState *state) {
     if (!state)
         return false;
     state->urls.clear();
+    state->pinned.clear();
     state->active_index = 0;
 
     gchar *path = session_path();
@@ -43,7 +44,13 @@ bool session_load(SessionState *state) {
         if (url && *url)
             state->urls.push_back(url);
         g_free(url);
+
+        gchar *pinned_key = g_strdup_printf("pinned%d", i);
+        state->pinned.push_back(g_key_file_get_boolean(file, "session", pinned_key, nullptr) != FALSE);
+        g_free(pinned_key);
     }
+    while (state->pinned.size() < state->urls.size())
+        state->pinned.push_back(false);
 
     if (state->urls.empty()) {
         g_key_file_free(file);
@@ -77,6 +84,10 @@ void session_save(const SessionState &state) {
         gchar *key = g_strdup_printf("url%zu", i);
         g_key_file_set_string(file, "session", key, state.urls[i].c_str());
         g_free(key);
+        gchar *pinned_key = g_strdup_printf("pinned%zu", i);
+        bool pinned = i < state.pinned.size() && state.pinned[i];
+        g_key_file_set_boolean(file, "session", pinned_key, pinned);
+        g_free(pinned_key);
     }
 
     gchar *path = session_path();

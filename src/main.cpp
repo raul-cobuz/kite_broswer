@@ -1,3 +1,4 @@
+#include <glib-unix.h>
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 
@@ -17,12 +18,23 @@
 #include "sync.h"
 #include "tracking_protection.h"
 
+static gboolean on_quit_signal(gpointer user_data) {
+    (void)user_data;
+    save_browser_session();
+    save_settings();
+    gtk_main_quit();
+    return G_SOURCE_REMOVE;
+}
+
 int main(int argc, char *argv[]) {
     gchar *requested_profile = nullptr;
     gchar *startup_url = nullptr;
+    bool guest = false;
     int kept = 1;
     for (int i = 1; i < argc; i++) {
-        if (g_str_has_prefix(argv[i], "--profile=")) {
+        if (g_strcmp0(argv[i], "--guest") == 0) {
+            guest = true;
+        } else if (g_str_has_prefix(argv[i], "--profile=")) {
             g_free(requested_profile);
             requested_profile = g_strdup(argv[i] + strlen("--profile="));
         } else if (g_strcmp0(argv[i], "--profile") == 0 && i + 1 < argc) {
@@ -44,9 +56,14 @@ int main(int argc, char *argv[]) {
     argc = kept;
 
     gtk_init(&argc, &argv);
+    g_set_prgname("kite");
     g_set_application_name("Kite Browser");
+    setup_kite_window_icon();
 
-    profile_init(requested_profile);
+    if (guest)
+        profile_init_guest();
+    else
+        profile_init(requested_profile);
     g_free(requested_profile);
 
     load_settings();
@@ -180,6 +197,83 @@ int main(int argc, char *argv[]) {
         }
         window.kite-dark notebook.kite-split-notebook { border-left-color: #303036; }
         window.kite-dark paned.kite-split-pane > separator { background-color: #303036; }
+
+        /* Profile avatar in the toolbar */
+        .kite-toolbar label.profile-avatar {
+            min-width: 22px;
+            min-height: 22px;
+            padding: 1px;
+            border-radius: 999px;
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .kite-toolbar label.avatar-color-0 { background-color: #1a73e8; }
+        .kite-toolbar label.avatar-color-1 { background-color: #d93025; }
+        .kite-toolbar label.avatar-color-2 { background-color: #2e9e60; }
+        .kite-toolbar label.avatar-color-3 { background-color: #d98a10; }
+        .kite-toolbar label.avatar-color-4 { background-color: #8c59db; }
+        .kite-toolbar label.avatar-color-5 { background-color: #0d9eaa; }
+        .kite-toolbar label.avatar-color-6 { background-color: #e65a8b; }
+        .kite-toolbar label.avatar-color-7 { background-color: #737d89; }
+        .kite-toolbar label.avatar-guest { background-color: #6b7280; }
+
+        /* Command palette */
+        window.kite-command-window {
+            background-color: #ffffff;
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            border-radius: 14px;
+        }
+        .kite-command-window .kite-command-entry {
+            min-height: 34px;
+            padding: 6px 12px;
+            border: 1px solid #dadce0;
+            border-radius: 10px;
+            background-image: none;
+            background-color: #f8f9fa;
+            color: #202124;
+            box-shadow: none;
+        }
+        .kite-command-window .kite-command-entry:focus {
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.18);
+        }
+        .kite-command-window .command-list { background-color: transparent; }
+        .kite-command-window .command-list row {
+            padding: 2px 6px;
+            border-radius: 8px;
+            margin: 1px 8px;
+        }
+        .kite-command-window .command-list row:selected { background-color: rgba(26, 115, 232, 0.12); }
+        .kite-command-window .command-title { color: #202124; font-size: 13.5px; font-weight: 600; }
+        .kite-command-window .command-detail { color: #5f6368; font-size: 12px; }
+        .kite-command-window .command-kind {
+            color: #5f6368;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: .07em;
+        }
+        .kite-command-window .command-footer { color: #80868b; font-size: 11.5px; }
+        window.kite-command-window.kite-dark {
+            background-color: #1f2023;
+            border-color: #3c4043;
+        }
+        window.kite-command-window.kite-dark .kite-command-entry {
+            background-color: #292a2d;
+            color: #e8eaed;
+            border-color: #3c4043;
+        }
+        window.kite-command-window.kite-dark .kite-command-entry:focus {
+            border-color: #8ab4f8;
+            box-shadow: 0 0 0 2px rgba(138, 180, 248, 0.20);
+        }
+        window.kite-command-window.kite-dark .command-list row:selected {
+            background-color: rgba(138, 180, 248, 0.16);
+        }
+        window.kite-command-window.kite-dark .command-title { color: #e8eaed; }
+        window.kite-command-window.kite-dark .command-detail,
+        window.kite-command-window.kite-dark .command-kind,
+        window.kite-command-window.kite-dark .command-footer { color: #9aa0a6; }
     )CSS";
 
     GtkCssProvider *css_provider = gtk_css_provider_new();
@@ -199,11 +293,16 @@ int main(int argc, char *argv[]) {
     init_downloads(context);
     extensions_init(context);
 
+    g_unix_signal_add(SIGTERM, on_quit_signal, nullptr);
+    g_unix_signal_add(SIGINT, on_quit_signal, nullptr);
+
     create_browser_window(startup_url);
     g_free(startup_url);
     gtk_main();
 
     privacy_clear_on_exit();
     history_close();
+    if (profile_is_guest())
+        profile_cleanup_guest();
     return 0;
 }

@@ -7,6 +7,7 @@
 
 struct SessionState {
     std::vector<std::string> urls;
+    std::vector<bool> pinned;
     int active_index = 0;
 };
 

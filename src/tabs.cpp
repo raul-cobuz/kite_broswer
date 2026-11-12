@@ -24,6 +24,8 @@ static int next_tab_id = 1;
 
 static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebKitWebView *related,
                                       gboolean load_url);
+static void update_tab_visuals(WebKitWebView *web_view);
+static void show_tab_context_menu(WebKitWebView *web_view, GdkEventButton *event);
 
 static bool is_trackable_url(const gchar *uri) {
     return uri && (g_str_has_prefix(uri, "http://") || g_str_has_prefix(uri, "https://") ||
@@ -72,6 +74,80 @@ static void apply_site_zoom(WebKitWebView *web_view) {
     double zoom = settings_site_zoom(host.c_str());
     if (zoom != webkit_web_view_get_zoom_level(web_view))
         webkit_web_view_set_zoom_level(web_view, zoom);
+}
+
+static void update_tab_visuals(WebKitWebView *web_view) {
+    if (!web_view)
+        return;
+
+    GtkWidget *label = GTK_WIDGET(g_object_get_data(G_OBJECT(web_view), "tab_label"));
+    GtkWidget *close_btn = GTK_WIDGET(g_object_get_data(G_OBJECT(web_view), "tab_close"));
+    GtkWidget *favicon = GTK_WIDGET(g_object_get_data(G_OBJECT(web_view), "tab_favicon"));
+    GtkWidget *mute = GTK_WIDGET(g_object_get_data(G_OBJECT(web_view), "tab_mute"));
+    bool pinned = tab_is_pinned(web_view);
+    bool muted = webkit_web_view_get_is_muted(web_view) != FALSE;
+
+    if (pinned) {
+        if (label)
+            gtk_widget_hide(label);
+        if (close_btn)
+            gtk_widget_hide(close_btn);
+        if (favicon) {
+            cairo_surface_t *surface = webkit_web_view_get_favicon(web_view);
+            bool set = false;
+            if (surface) {
+                int width = cairo_image_surface_get_width(surface);
+                int height = cairo_image_surface_get_height(surface);
+                if (width > 0 && height > 0) {
+                    GdkPixbuf *pixbuf = gdk_pixbuf_get_from_surface(surface, 0, 0, width, height);
+                    if (pixbuf) {
+                        GdkPixbuf *scaled =
+                            gdk_pixbuf_scale_simple(pixbuf, 16, 16, GDK_INTERP_BILINEAR);
+                        if (scaled) {
+                            gtk_image_set_from_pixbuf(GTK_IMAGE(favicon), scaled);
+                            g_object_unref(scaled);
+                            set = true;
+                        }
+                        g_object_unref(pixbuf);
+                    }
+                }
+            }
+            if (!set)
+                gtk_image_set_from_icon_name(GTK_IMAGE(favicon), "text-html-symbolic", GTK_ICON_SIZE_MENU);
+            gtk_widget_show(favicon);
+        }
+    } else {
+        if (favicon)
+            gtk_widget_hide(favicon);
+        if (label)
+            gtk_widget_show(label);
+        if (close_btn)
+            gtk_widget_show(close_btn);
+    }
+
+    if (mute) {
+        if (muted)
+            gtk_widget_show(mute);
+        else
+            gtk_widget_hide(mute);
+    }
+
+    const gchar *title = webkit_web_view_get_title(web_view);
+    const gchar *uri = webkit_web_view_get_uri(web_view);
+    const gchar *label_text = title && *title ? title : (uri && *uri ? uri : "New Tab");
+    gchar *tooltip = pinned ? g_strdup_printf("%s — pinned", label_text) : g_strdup(label_text);
+    if (label)
+        gtk_widget_set_tooltip_text(label, tooltip);
+    GtkWidget *tab_box = GTK_WIDGET(g_object_get_data(G_OBJECT(web_view), "tab_box"));
+    if (tab_box)
+        gtk_widget_set_tooltip_text(tab_box, tooltip);
+    g_free(tooltip);
+}
+
+static void on_favicon_changed(WebKitWebView *web_view, GParamSpec *pspec, gpointer user_data) {
+    (void)pspec;
+    (void)user_data;
+    update_tab_visuals(web_view);
 }
 
 static void remember_closed_tab(WebKitWebView *web_view) {
@@ -189,6 +265,7 @@ static void on_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_event,
 
         apply_site_zoom(web_view);
         update_bookmark_button(web_view);
+        update_tab_visuals(web_view);
         save_browser_session();
     }
 
@@ -211,6 +288,7 @@ static void on_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_event,
         }
 
         update_bookmark_button(web_view);
+        update_tab_visuals(web_view);
         save_browser_session();
     }
 
@@ -255,14 +333,18 @@ static void on_title_changed(WebKitWebView *web_view, GParamSpec *pspec, GtkWidg
     if (!title)
         return;
 
-    gtk_label_set_text(GTK_LABEL(label), title);
-    gtk_widget_set_tooltip_text(label, title);
+    if (!tab_is_pinned(web_view)) {
+        gtk_label_set_text(GTK_LABEL(label), title);
+        gtk_widget_set_tooltip_text(label, title);
+    }
 
     if (!webview_is_incognito(web_view)) {
         const gchar *uri = webkit_web_view_get_uri(web_view);
         if (is_trackable_url(uri) && *title)
             history_update_title(uri, title);
     }
+
+    update_tab_visuals(web_view);
 
     if (web_view == get_active_webview() || split_view_active()) {
         update_window_title(get_active_webview());
@@ -277,11 +359,164 @@ static gboolean on_webview_focus_in(GtkWidget *widget, GdkEventFocus *event, gpo
     return FALSE;
 }
 
+static void menu_unref_view(gpointer data, GClosure *closure) {
+    (void)closure;
+    if (data)
+        g_object_unref(data);
+}
+
+static void on_menu_duplicate(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    tab_duplicate(WEBKIT_WEB_VIEW(user_data));
+}
+
+static void on_menu_copy_url(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    tab_copy_url(WEBKIT_WEB_VIEW(user_data));
+}
+
+static void on_menu_mute(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    tab_toggle_muted(WEBKIT_WEB_VIEW(user_data));
+}
+
+static void on_menu_pin(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    tab_toggle_pinned(WEBKIT_WEB_VIEW(user_data));
+}
+
+static void on_menu_close_others(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    tab_close_others(WEBKIT_WEB_VIEW(user_data));
+}
+
+static void on_menu_close_right(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    tab_close_to_right(WEBKIT_WEB_VIEW(user_data));
+}
+
+static void on_menu_move_split(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    move_tab_to_split(WEBKIT_WEB_VIEW(user_data));
+}
+
+static GtkWidget *add_menu_item(GtkWidget *menu, const char *label, GCallback callback,
+                                WebKitWebView *web_view) {
+    GtkWidget *item = gtk_menu_item_new_with_label(label);
+    g_signal_connect_data(item, "activate", callback, g_object_ref(web_view), menu_unref_view,
+                          (GConnectFlags)0);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+    return item;
+}
+
+static void show_tab_context_menu(WebKitWebView *web_view, GdkEventButton *event) {
+    if (!web_view)
+        return;
+
+    GtkWidget *menu = gtk_menu_new();
+    bool pinned = tab_is_pinned(web_view);
+    bool muted = webkit_web_view_get_is_muted(web_view) != FALSE;
+    bool in_split = browser.split_notebook &&
+                    gtk_notebook_page_num(GTK_NOTEBOOK(browser.split_notebook), GTK_WIDGET(web_view)) >= 0;
+
+    add_menu_item(menu, "Duplicate", G_CALLBACK(on_menu_duplicate), web_view);
+    add_menu_item(menu, "Copy URL", G_CALLBACK(on_menu_copy_url), web_view);
+    add_menu_item(menu, muted ? "Unmute tab" : "Mute tab", G_CALLBACK(on_menu_mute), web_view);
+    add_menu_item(menu, pinned ? "Unpin tab" : "Pin tab", G_CALLBACK(on_menu_pin), web_view);
+
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+    add_menu_item(menu, "Close other tabs", G_CALLBACK(on_menu_close_others), web_view);
+    GtkWidget *close_right = add_menu_item(menu, "Close tabs to the right", G_CALLBACK(on_menu_close_right),
+                                           web_view);
+
+    gint page = -1;
+    GtkNotebook *notebook = notebook_for_webview(web_view);
+    if (notebook)
+        page = gtk_notebook_page_num(notebook, GTK_WIDGET(web_view));
+    bool has_right = false;
+    if (notebook) {
+        gint pages = gtk_notebook_get_n_pages(notebook);
+        for (gint i = page + 1; i < pages; i++) {
+            GtkWidget *child = gtk_notebook_get_nth_page(notebook, i);
+            if (child && WEBKIT_IS_WEB_VIEW(child) && !tab_is_pinned(WEBKIT_WEB_VIEW(child)))
+                has_right = true;
+        }
+    }
+    gtk_widget_set_sensitive(close_right, has_right);
+
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+    add_menu_item(menu, in_split ? "Move out of split pane" : "Move to split pane",
+                  G_CALLBACK(on_menu_move_split), web_view);
+
+    gtk_widget_show_all(menu);
+    gtk_menu_attach_to_widget(GTK_MENU(menu), GTK_WIDGET(web_view), nullptr);
+    g_signal_connect_swapped(menu, "selection-done", G_CALLBACK(gtk_widget_destroy), menu);
+    gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+}
+
 static gboolean on_tab_box_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
     (void)widget;
+    WebKitWebView *web_view = WEBKIT_WEB_VIEW(user_data);
     if (event->button == 1)
-        split_view_note_focus(WEBKIT_WEB_VIEW(user_data));
+        split_view_note_focus(web_view);
+    else if (event->button == 2)
+        close_tab(web_view);
+    else if (event->button == 3) {
+        show_tab_context_menu(web_view, event);
+        return TRUE;
+    }
     return FALSE;
+}
+
+// GtkNotebook owns its tab strip and can consume right-clicks before they
+// reach the tab label. Hit-test the visible labels here as well so the
+// context menu works anywhere on a tab.
+static WebKitWebView *tab_at_position(GtkNotebook *notebook, gdouble x, gdouble y) {
+    gint pages = gtk_notebook_get_n_pages(notebook);
+    for (gint i = 0; i < pages; i++) {
+        GtkWidget *child = gtk_notebook_get_nth_page(notebook, i);
+        GtkWidget *label = child ? gtk_notebook_get_tab_label(notebook, child) : nullptr;
+        if (!label || !gtk_widget_get_visible(label))
+            continue;
+
+        GtkAllocation allocation;
+        gtk_widget_get_allocation(label, &allocation);
+        gint label_x = 0;
+        gint label_y = 0;
+        gtk_widget_translate_coordinates(label, GTK_WIDGET(notebook), 0, 0, &label_x, &label_y);
+        if (x >= label_x && x < label_x + allocation.width && y >= label_y && y < label_y + allocation.height)
+            return WEBKIT_IS_WEB_VIEW(child) ? WEBKIT_WEB_VIEW(child) : nullptr;
+    }
+    return nullptr;
+}
+
+static gboolean on_notebook_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+    (void)user_data;
+    if (event->type != GDK_BUTTON_PRESS || event->button != 3)
+        return FALSE;
+
+    gdouble x = event->x;
+    gdouble y = event->y;
+    GdkWindow *event_window = event->window;
+    GdkWindow *notebook_window = gtk_widget_get_window(widget);
+    if (event_window && notebook_window && event_window != notebook_window) {
+        gint event_x = 0, event_y = 0, notebook_x = 0, notebook_y = 0;
+        gdk_window_get_origin(event_window, &event_x, &event_y);
+        gdk_window_get_origin(notebook_window, &notebook_x, &notebook_y);
+        x += event_x - notebook_x;
+        y += event_y - notebook_y;
+    }
+
+    WebKitWebView *web_view = tab_at_position(GTK_NOTEBOOK(widget), x, y);
+    if (!web_view)
+        return FALSE;
+    show_tab_context_menu(web_view, event);
+    return TRUE;
+}
+
+void tabs_install_notebook_context_menu(GtkNotebook *notebook) {
+    if (notebook)
+        g_signal_connect(notebook, "button-press-event", G_CALLBACK(on_notebook_button_press), nullptr);
 }
 
 static void on_tab_close_clicked(GtkButton *btn, GtkWidget *child_page) {
@@ -325,6 +560,14 @@ static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebK
     apply_webview_settings(web_view);
 
     GtkWidget *tab_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *tab_favicon = gtk_image_new_from_icon_name("web-browser-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_widget_set_no_show_all(tab_favicon, TRUE);
+    gtk_widget_set_valign(tab_favicon, GTK_ALIGN_CENTER);
+    GtkWidget *tab_mute = gtk_image_new_from_icon_name("audio-volume-muted-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_widget_set_no_show_all(tab_mute, TRUE);
+    gtk_widget_set_valign(tab_mute, GTK_ALIGN_CENTER);
+    gtk_widget_set_tooltip_text(tab_mute, "Tab is muted");
+
     GtkWidget *tab_label = gtk_label_new(incognito ? "Incognito" : "Loading...");
     gtk_label_set_ellipsize(GTK_LABEL(tab_label), PANGO_ELLIPSIZE_END);
     gtk_label_set_max_width_chars(GTK_LABEL(tab_label), 18);
@@ -334,7 +577,14 @@ static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebK
     GtkWidget *close_btn = gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
     gtk_button_set_relief(GTK_BUTTON(close_btn), GTK_RELIEF_NONE);
 
+    g_object_set_data(G_OBJECT(web_view), "tab_box", tab_box);
+    g_object_set_data(G_OBJECT(web_view), "tab_favicon", tab_favicon);
+    g_object_set_data(G_OBJECT(web_view), "tab_mute", tab_mute);
+    g_object_set_data(G_OBJECT(web_view), "tab_close", close_btn);
+
+    gtk_box_pack_start(GTK_BOX(tab_box), tab_favicon, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(tab_box), tab_label, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(tab_box), tab_mute, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(tab_box), close_btn, FALSE, FALSE, 0);
 
     g_signal_connect(web_view, "load-changed", G_CALLBACK(on_load_changed), NULL);
@@ -345,6 +595,7 @@ static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebK
     g_signal_connect(web_view, "permission-request", G_CALLBACK(on_permission_request), NULL);
     g_signal_connect(web_view, "notify::estimated-load-progress", G_CALLBACK(on_progress_changed), NULL);
     g_signal_connect(web_view, "notify::title", G_CALLBACK(on_title_changed), tab_label);
+    g_signal_connect(web_view, "notify::favicon", G_CALLBACK(on_favicon_changed), NULL);
     g_signal_connect(web_view, "create", G_CALLBACK(on_create_tab), NULL);
     g_signal_connect(web_view, "focus-in-event", G_CALLBACK(on_webview_focus_in), NULL);
     g_signal_connect(tab_box, "button-press-event", G_CALLBACK(on_tab_box_button_press), web_view);
@@ -373,6 +624,148 @@ void create_new_tab(const gchar *url) {
 
 void create_incognito_tab(const gchar *url) {
     create_tab(url, TRUE);
+}
+
+bool tab_is_pinned(WebKitWebView *web_view) {
+    if (!web_view)
+        return false;
+    return GPOINTER_TO_INT(g_object_get_data(G_OBJECT(web_view), "kite_pinned")) != 0;
+}
+
+void tabs_enforce_pinned_order(GtkNotebook *notebook) {
+    if (!notebook)
+        return;
+    std::vector<WebKitWebView *> pinned;
+    gint pages = gtk_notebook_get_n_pages(notebook);
+    for (gint i = 0; i < pages; i++) {
+        GtkWidget *child = gtk_notebook_get_nth_page(notebook, i);
+        if (child && WEBKIT_IS_WEB_VIEW(child) && tab_is_pinned(WEBKIT_WEB_VIEW(child)))
+            pinned.push_back(WEBKIT_WEB_VIEW(child));
+    }
+    for (size_t i = 0; i < pinned.size(); i++) {
+        if (gtk_notebook_page_num(notebook, GTK_WIDGET(pinned[i])) != (gint)i)
+            gtk_notebook_reorder_child(notebook, GTK_WIDGET(pinned[i]), (gint)i);
+    }
+}
+
+void tab_set_pinned(WebKitWebView *web_view, bool pinned) {
+    if (!web_view)
+        return;
+    bool was_pinned = tab_is_pinned(web_view);
+    g_object_set_data(G_OBJECT(web_view), "kite_pinned", GINT_TO_POINTER(pinned ? 1 : 0));
+
+    GtkNotebook *notebook = notebook_for_webview(web_view);
+    if (notebook) {
+        gtk_notebook_set_tab_reorderable(notebook, GTK_WIDGET(web_view),
+                                         !pinned && notebook == GTK_NOTEBOOK(browser.notebook));
+        if (pinned) {
+            gint target = 0;
+            gint pages = gtk_notebook_get_n_pages(notebook);
+            for (gint i = 0; i < pages; i++) {
+                GtkWidget *child = gtk_notebook_get_nth_page(notebook, i);
+                if (child && child != GTK_WIDGET(web_view) && WEBKIT_IS_WEB_VIEW(child) &&
+                    tab_is_pinned(WEBKIT_WEB_VIEW(child)))
+                    target++;
+            }
+            gtk_notebook_reorder_child(notebook, GTK_WIDGET(web_view), target);
+        } else {
+            gint target = 0;
+            gint pages = gtk_notebook_get_n_pages(notebook);
+            for (gint i = 0; i < pages; i++) {
+                GtkWidget *child = gtk_notebook_get_nth_page(notebook, i);
+                if (child && child != GTK_WIDGET(web_view) && WEBKIT_IS_WEB_VIEW(child) &&
+                    tab_is_pinned(WEBKIT_WEB_VIEW(child)))
+                    target++;
+            }
+            gtk_notebook_reorder_child(notebook, GTK_WIDGET(web_view), target);
+        }
+    }
+    update_tab_visuals(web_view);
+    if (was_pinned != pinned)
+        save_browser_session();
+}
+
+void tab_toggle_pinned(WebKitWebView *web_view) {
+    if (web_view)
+        tab_set_pinned(web_view, !tab_is_pinned(web_view));
+}
+
+void tab_duplicate(WebKitWebView *web_view) {
+    if (!web_view)
+        return;
+    const gchar *uri = webkit_web_view_get_uri(web_view);
+    create_tab_view(uri && *uri ? uri : KITE_NEWTAB_URL, webview_is_incognito(web_view), nullptr, TRUE);
+}
+
+void tab_copy_url(WebKitWebView *web_view) {
+    if (!web_view)
+        return;
+    const gchar *uri = webkit_web_view_get_uri(web_view);
+    if (!uri || !*uri)
+        return;
+    GtkClipboard *clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
+    if (clipboard)
+        gtk_clipboard_set_text(clipboard, uri, -1);
+}
+
+void tab_toggle_muted(WebKitWebView *web_view) {
+    if (!web_view)
+        return;
+    webkit_web_view_set_is_muted(web_view, !webkit_web_view_get_is_muted(web_view));
+    update_tab_visuals(web_view);
+}
+
+static std::vector<WebKitWebView *> notebook_views(GtkNotebook *notebook) {
+    std::vector<WebKitWebView *> views;
+    if (!notebook)
+        return views;
+    gint pages = gtk_notebook_get_n_pages(notebook);
+    for (gint i = 0; i < pages; i++) {
+        GtkWidget *child = gtk_notebook_get_nth_page(notebook, i);
+        if (child && WEBKIT_IS_WEB_VIEW(child))
+            views.push_back(WEBKIT_WEB_VIEW(child));
+    }
+    return views;
+}
+
+void tab_close_others(WebKitWebView *web_view) {
+    if (!web_view)
+        return;
+    GtkNotebook *notebook = notebook_for_webview(web_view);
+    if (!notebook)
+        return;
+
+    std::vector<WebKitWebView *> targets;
+    for (WebKitWebView *view : notebook_views(notebook)) {
+        if (view != web_view && !tab_is_pinned(view))
+            targets.push_back(view);
+    }
+    for (WebKitWebView *view : targets)
+        close_tab(view);
+    activate_webview(web_view);
+}
+
+void tab_close_to_right(WebKitWebView *web_view) {
+    if (!web_view)
+        return;
+    GtkNotebook *notebook = notebook_for_webview(web_view);
+    if (!notebook)
+        return;
+
+    gint page = gtk_notebook_page_num(notebook, GTK_WIDGET(web_view));
+    if (page < 0)
+        return;
+
+    std::vector<WebKitWebView *> targets;
+    gint pages = gtk_notebook_get_n_pages(notebook);
+    for (gint i = page + 1; i < pages; i++) {
+        GtkWidget *child = gtk_notebook_get_nth_page(notebook, i);
+        if (child && WEBKIT_IS_WEB_VIEW(child) && !tab_is_pinned(WEBKIT_WEB_VIEW(child)))
+            targets.push_back(WEBKIT_WEB_VIEW(child));
+    }
+    for (auto it = targets.rbegin(); it != targets.rend(); ++it)
+        close_tab(*it);
+    activate_webview(web_view);
 }
 
 void close_tab(WebKitWebView *web_view) {
@@ -453,6 +846,8 @@ std::vector<KiteTabInfo> tabs_list() {
             info.index = index++;
             info.active = web_view == active;
             info.incognito = webview_is_incognito(web_view) != FALSE;
+            info.pinned = tab_is_pinned(web_view);
+            info.muted = webkit_web_view_get_is_muted(web_view) != FALSE;
             const gchar *uri = webkit_web_view_get_uri(web_view);
             const gchar *title = webkit_web_view_get_title(web_view);
             info.url = uri ? uri : "";

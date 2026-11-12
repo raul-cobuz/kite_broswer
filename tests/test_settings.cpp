@@ -45,6 +45,12 @@ int main() {
     check(settings_strip_tracking_params(), "tracking parameter removal defaults to on");
     check(!settings_clear_on_exit(), "clear on exit defaults to off");
     check(settings_site_adblock_enabled("example.com"), "site ad blocking defaults to on");
+    check(settings_newtab_clock(), "start-page clock defaults to on");
+    check(!settings_newtab_weather(), "weather widget defaults to off");
+    check(!settings_newtab_compact(), "start page defaults to expanded layout");
+    expect_str(settings_newtab_background(), "", "start page has no background by default");
+    expect_str(settings_newtab_weather_units(), "celsius", "weather units default to Celsius");
+    check(settings_newtab_links().empty(), "custom quick links start empty");
 
     settings_set_dark_mode(true);
     remember_permission_decision("media", "example.com", TRUE);
@@ -92,6 +98,32 @@ int main() {
     check(!settings_site_adblock_enabled("example.com"), "host exception disables site blocking");
     check(!settings_site_adblock_enabled("EXAMPLE.com"), "host exception lookup is case-insensitive");
     check(settings_site_adblock_enabled("other.test"), "other sites keep blocking");
+
+    settings_set_newtab_clock(false);
+    settings_set_newtab_weather(true);
+    settings_set_newtab_weather_city("  Lisbon  ");
+    settings_set_newtab_weather_units("fahrenheit");
+    settings_set_newtab_background("file:///tmp/kite wallpaper.png");
+    settings_set_newtab_compact(true);
+    check(!settings_newtab_clock(), "start-page clock disabled in memory");
+    check(settings_newtab_weather(), "weather widget enabled in memory");
+    expect_str(settings_newtab_weather_city(), "Lisbon", "weather city is trimmed");
+    expect_str(settings_newtab_weather_units(), "fahrenheit", "weather units normalized to Fahrenheit");
+    expect_str(settings_newtab_background(), "file:///tmp/kite wallpaper.png", "background stored in memory");
+    check(settings_newtab_compact(), "compact layout enabled in memory");
+    check(settings_newtab_link_add("Docs", "https://example.com/docs"), "custom quick link added");
+    check(settings_newtab_link_add("", "https://news.test"), "untitled custom quick link added");
+    check(!settings_newtab_link_add("", "https://example.com/docs"), "duplicate quick link rejected");
+    check(settings_newtab_link_add("Documentation", "https://example.com/docs"),
+          "duplicate quick link title updated");
+    check(!settings_newtab_link_remove("https://missing.test"), "missing quick link not removed");
+    std::vector<NewTabLink> newtab_links = settings_newtab_links();
+    check(newtab_links.size() == 2, "two custom quick links stored");
+    if (newtab_links.size() == 2) {
+        expect_str(newtab_links[0].title.c_str(), "Documentation", "quick link title updated");
+        expect_str(newtab_links[0].url.c_str(), "https://example.com/docs", "quick link URL retained");
+        expect_str(newtab_links[1].url.c_str(), "https://news.test", "second quick link retained");
+    }
     gchar **exceptions = settings_adblock_exception_hosts();
     check(g_strv_length(exceptions) == 2, "two ad-block exceptions listed");
     expect_str(exceptions[0], "example.com", "exceptions are normalized and sorted");
@@ -134,6 +166,25 @@ int main() {
     value = g_key_file_get_string(file, "privacy", "adblock_exceptions", nullptr);
     expect_str(value, "example.com;news.test", "ad-block exceptions persisted");
     g_free(value);
+    check(!g_key_file_get_boolean(file, "newtab", "clock", nullptr), "start-page clock persisted");
+    check(g_key_file_get_boolean(file, "newtab", "weather", nullptr), "weather widget persisted");
+    value = g_key_file_get_string(file, "newtab", "weather_city", nullptr);
+    expect_str(value, "Lisbon", "weather city persisted");
+    g_free(value);
+    value = g_key_file_get_string(file, "newtab", "weather_units", nullptr);
+    expect_str(value, "fahrenheit", "weather units persisted");
+    g_free(value);
+    value = g_key_file_get_string(file, "newtab", "background", nullptr);
+    expect_str(value, "file:///tmp/kite wallpaper.png", "start-page background persisted");
+    g_free(value);
+    check(g_key_file_get_boolean(file, "newtab", "compact", nullptr), "compact layout persisted");
+    check(g_key_file_get_integer(file, "newtab", "link_count", nullptr) == 2, "quick link count persisted");
+    value = g_key_file_get_string(file, "newtab", "link0_title", nullptr);
+    expect_str(value, "Documentation", "quick link title persisted");
+    g_free(value);
+    value = g_key_file_get_string(file, "newtab", "link0_url", nullptr);
+    expect_str(value, "https://example.com/docs", "quick link URL persisted");
+    g_free(value);
     check(g_key_file_get_double(file, "zoom", "zoom|example.com", nullptr) == 1.25, "site zoom persisted");
     check(g_key_file_get_double(file, "zoom", "zoom|a_5Fb.test", nullptr) == 2.0,
           "site zoom key escapes host");
@@ -155,6 +206,18 @@ int main() {
     check(!settings_strip_tracking_params(), "tracking removal restored");
     check(settings_clear_on_exit(), "clear on exit restored");
     check(!settings_site_adblock_enabled("example.com"), "ad-block exception restored");
+    check(!settings_newtab_clock(), "start-page clock restored");
+    check(settings_newtab_weather(), "weather widget restored");
+    expect_str(settings_newtab_weather_city(), "Lisbon", "weather city restored");
+    expect_str(settings_newtab_weather_units(), "fahrenheit", "weather units restored");
+    expect_str(settings_newtab_background(), "file:///tmp/kite wallpaper.png", "background restored");
+    check(settings_newtab_compact(), "compact layout restored");
+    newtab_links = settings_newtab_links();
+    check(newtab_links.size() == 2, "quick links restored");
+    if (newtab_links.size() == 2) {
+        expect_str(newtab_links[0].title.c_str(), "Documentation", "quick link title restored");
+        expect_str(newtab_links[1].url.c_str(), "https://news.test", "quick link URL restored");
+    }
     exceptions = settings_adblock_exception_hosts();
     check(g_strv_length(exceptions) == 2, "restored exception count");
     g_strfreev(exceptions);
@@ -176,6 +239,19 @@ int main() {
     save_settings();
     load_settings();
     check(settings_site_zoom("example.com") == 1.0, "cleared site zoom defaults to 100%");
+
+    std::vector<NewTabLink> many_links;
+    for (int i = 0; i < KITE_MAX_NEWTAB_LINKS + 5; i++) {
+        NewTabLink link;
+        link.title = "Link " + std::to_string(i);
+        link.url = "https://example.test/" + std::to_string(i);
+        many_links.push_back(link);
+    }
+    settings_set_newtab_links(many_links);
+    check((int)settings_newtab_links().size() == KITE_MAX_NEWTAB_LINKS, "quick links capped at the maximum");
+    check(!settings_newtab_link_add("Overflow", "https://overflow.test"), "quick link limit enforced");
+    check(settings_newtab_link_remove("https://example.test/0"), "quick link can be removed");
+    check(settings_newtab_link_add("Overflow", "https://overflow.test"), "removed slot can be reused");
 
     g_remove(settings_path);
     gchar *kite_dir = g_path_get_dirname(settings_path);

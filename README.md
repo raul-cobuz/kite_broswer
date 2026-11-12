@@ -13,7 +13,7 @@ sudo apt install build-essential cmake pkg-config libgtk-3-dev libwebkit2gtk-4.1
 ```bash
 make          # optimized build -> ./mybrowser
 make debug    # debug build -> ./mybrowser-debug
-make test     # unit tests (URL handling, settings, history, session)
+make test     # unit tests for settings, history, session, profiles, sync, and more
 ```
 
 The build uses CMake and writes intermediates to `build/`. A direct CMake build works too:
@@ -51,14 +51,34 @@ make install
 ```
 
 This installs the current build as `~/.local/bin/kite` together with `filters.json`
-(override with `BINDIR=/some/path`). Restart a running Kite window to pick up the
-new binary.
+(override with `BINDIR=/some/path`). It also installs `kite.desktop` and the Kite
+icon under `~/.local/share`, so Kite appears in the desktop application menu and
+can be selected as the default browser. Restart a running Kite window to pick up
+the new binary.
+
+To register Kite as the default web browser from a terminal:
+
+```bash
+make default-browser
+# or ask the app from kite://settings → Default browser
+```
+
+`make default-browser` uses `xdg-settings set default-web-browser kite.desktop`.
+Some desktops still show a confirmation prompt, and a few (for example GNOME
+without the relevant portal) only allow changing the default from their own
+settings panel.
 
 ## Features
 
 - Tabbed browsing with incognito tabs that share one ephemeral session
 - Split view: two tabs side by side in one window, with the address bar, navigation, and find bar following the focused pane
-- Named profiles at `kite://profiles`: isolated history, bookmarks, settings, extensions, and website data; switching relaunches Kite
+- Tab context menu with Duplicate, Copy URL, Mute, Pin, Close other tabs, Close tabs to the right, and Move to split pane
+- Pinned tabs shrink to their favicon and stay at the left of the tab strip; pinned state is saved in the session
+- Command palette on Ctrl+K or Ctrl+Shift+A that searches open tabs, history, bookmarks, and actions such as “New incognito tab” or “Toggle dark mode”
+- Screenshots (visible area or the full page) to PNG and native printing through WebKit's GTK print dialog
+- Named profiles at `kite://profiles`: avatar initials/colours, isolated history, bookmarks, settings, extensions, and website data; switching relaunches Kite
+- Guest profile at `kite://profiles`: a throwaway profile whose history, cookies, and settings are deleted when Kite closes
+- Customizable start page: background image, clock, Open-Meteo weather widget, up to twelve custom quick links, and a compact/expanded layout
 - Folder-based sync at `kite://sync` that merges bookmarks, pinned links, history, and optional settings through `kite-sync.json`
 - Omnibox suggestions from history, bookmarks, pins, open tabs, and Kite pages, with engine-aware search
 - Search settings at `kite://settings` for Google, DuckDuckGo, Startpage, or Brave, plus an automatic Google verification fallback
@@ -108,15 +128,27 @@ media|example.com=allow
 
 [zoom]
 zoom|example.com=1.2
+
+[newtab]
+clock=true
+weather=false
+weather_city=Lisbon
+weather_units=celsius
+background=
+compact=false
+link_count=1
+link0_title=Docs
+link0_url=https://example.com/docs
 ```
 
 - `homepage` is used by the Home button (default `kite://newtab`).
 - `engine` is `google` (default), `duckduckgo`, `startpage`, or `brave`.
 - `google_fallback` rewrites Google `/sorry/` verification pages to DuckDuckGo results instead of showing the robot check.
-- `restore` restores the previous session on startup alongside a fresh start page, which opens first and stays active.
+- `restore` restores the previous session on startup alongside a fresh start page, which opens after any pinned restored tabs and stays active.
 - `directory` is the folder the save dialog starts in; every download shows a file chooser.
 - `[sync]` controls the shared folder, startup syncing, and whether settings are merged along with bookmarks, pins, and history.
 - `[zoom]` stores per-host zoom levels, written automatically by Ctrl++ / Ctrl+-.
+- `[newtab]` stores start-page customization: background image URL/path, clock and weather toggles, weather city/units, compact layout, and up to twelve custom quick links. These are separate from the pinned links on the start page.
 - `[permissions]` is written from the permission prompts; delete keys to ask again.
 
 History, bookmarks, and pinned start-page links live in
@@ -135,9 +167,15 @@ relaunches Kite. Start directly in a profile with:
 
 ```bash
 kite --profile=<id>
+# browse with a throwaway guest profile
+kite --guest
 # or open a URL/query directly
 kite --url=kite://settings
 ```
+
+Guest mode creates a temporary data directory, skips session restore, and removes
+the directory when Kite exits. Named profiles and guest profiles share the same
+window but never share cookies, history, bookmarks, or settings.
 
 Sync uses a folder you choose on `kite://sync`. Kite writes `kite-sync.json` there
 and merges bookmarks, pinned links, and history, optionally including homepage,
@@ -205,6 +243,10 @@ such as `<all_urls>` expand to `http://` and `https://` only.
 | Ctrl+H | History page |
 | Ctrl+Shift+O | Bookmarks page |
 | Ctrl+Shift+P | Incognito tab |
+| Ctrl+K / Ctrl+Shift+A | Search tabs, history, bookmarks, and commands |
+| Ctrl+P | Print the current page |
+| Ctrl+Shift+S | Save a screenshot of the visible page |
+| Ctrl+Shift+E | Save a full-page screenshot |
 | F9 / Ctrl+Shift+D | Toggle dark mode |
 | F12 / Ctrl+Shift+I | DevTools |
 | Ctrl++ / Ctrl+- / Ctrl+0 | Zoom in / out / reset (per site) |
@@ -220,12 +262,14 @@ typed in the address bar at any time.
 ```
 src/main.cpp             startup, context and global init
 src/browser_window.*     window, toolbar, shortcuts, omnibox, session save/restore
-src/tabs.*               tab lifecycle, history/zoom hooks, recently closed tabs
+src/tabs.*               tab lifecycle, pinned tabs, context menu, history/zoom hooks
+src/command_palette.*    Ctrl+K search across tabs, history, bookmarks, and actions
+src/page_tools.*         screenshot capture and WebKit print dialog
 src/history.*            SQLite history/bookmarks/pinned-link schema and queries
-src/session.*            session.ini load/save/clear
-src/settings.*           settings.ini, permission memory, per-site zoom, search engine
+src/session.*            session.ini load/save/clear, including pinned tabs
+src/settings.*           settings.ini, permission memory, per-site zoom, start page
 src/kite_pages.*         kite:// internal pages
-src/profile.*            profile registry, isolated paths, active-profile switching
+src/profile.*            profile registry, guest profile, avatars, active-profile switching
 src/sync.*               folder-based sync of bookmarks, pins, history, and settings
 src/omnibox.*            local-first address-bar suggestions
 src/app_context.*        persistent WebKit context and cookie storage
@@ -238,5 +282,7 @@ src/find_bar.*           find-in-page UI
 src/permissions.*        permission prompts and persistence
 src/url_utils.*          URL normalization, bangs, host extraction
 tests/                   unit tests for UI-independent logic
+data/kite.desktop.in     desktop entry installed by make install
+data/kite.svg            scalable application icon
 Makefile                 convenience wrapper around CMake
 ```

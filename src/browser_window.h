@@ -52,9 +52,11 @@ void refresh_search_placeholder();
 // tab in the primary notebook and moves one other tab to the secondary pane.
 bool split_view_active();
 void toggle_split_view();
+void move_tab_to_split(WebKitWebView *web_view);
 bool activate_webview(WebKitWebView *web_view);
 GtkNotebook *notebook_for_webview(WebKitWebView *web_view);
 void split_view_note_focus(WebKitWebView *web_view);
 void split_view_after_tab_removed(GtkNotebook *notebook);
 
+void setup_kite_window_icon(GtkWindow *window = nullptr);
 void create_browser_window(const gchar *startup_url = nullptr);

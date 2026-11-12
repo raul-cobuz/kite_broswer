@@ -9,9 +9,32 @@ namespace {
 
 constexpr const char *kDefaultProfileId = "default";
 constexpr const char *kDefaultProfileName = "Default";
+constexpr const char *kGuestProfileId = "guest";
+constexpr const char *kGuestProfileName = "Guest";
 
 std::string current_id = kDefaultProfileId;
 std::string current_name = kDefaultProfileName;
+std::string guest_root;
+bool guest_active = false;
+
+struct AvatarColor {
+    double red;
+    double green;
+    double blue;
+};
+
+// Keep this palette in sync with the avatar-color-* CSS classes.
+constexpr AvatarColor kAvatarColors[] = {
+    {0.10, 0.45, 0.91}, // blue
+    {0.85, 0.27, 0.22}, // red
+    {0.18, 0.65, 0.38}, // green
+    {0.85, 0.55, 0.10}, // amber
+    {0.55, 0.35, 0.86}, // purple
+    {0.05, 0.62, 0.66}, // teal
+    {0.90, 0.35, 0.55}, // pink
+    {0.45, 0.50, 0.56}, // slate
+};
+constexpr int kAvatarColorCount = (int)(sizeof(kAvatarColors) / sizeof(kAvatarColors[0]));
 
 gchar *cached_data_dir = nullptr;
 gchar *cached_config_dir = nullptr;
@@ -77,9 +100,18 @@ void clear_cached_paths() {
 
 void rebuild_cached_paths() {
     clear_cached_paths();
-    std::string data = profile_subdir(base_data_path(), current_id);
-    std::string config = profile_subdir(base_config_path(), current_id);
-    std::string cache = profile_subdir(base_cache_path(), current_id);
+    std::string data;
+    std::string config;
+    std::string cache;
+    if (current_id == kGuestProfileId && !guest_root.empty()) {
+        data = guest_root;
+        config = std::string(guest_root) + "/config";
+        cache = std::string(guest_root) + "/cache";
+    } else {
+        data = profile_subdir(base_data_path(), current_id);
+        config = profile_subdir(base_config_path(), current_id);
+        cache = profile_subdir(base_cache_path(), current_id);
+    }
 
     cached_data_dir = g_strdup(data.c_str());
     cached_config_dir = g_strdup(config.c_str());
@@ -294,11 +326,19 @@ std::string read_active_marker() {
 } // namespace
 
 void profile_init(const gchar *requested_id) {
-    Registry registry = load_registry();
+    if (current_id == kGuestProfileId)
+        profile_cleanup_guest();
+
     std::string wanted = requested_id ? requested_id : "";
     if (wanted.empty())
         wanted = read_active_marker();
 
+    if (wanted == kGuestProfileId) {
+        profile_init_guest();
+        return;
+    }
+
+    Registry registry = load_registry();
     if (!wanted.empty() && valid_profile_id(wanted) && registry.exists(wanted)) {
         current_id = wanted;
     } else {
@@ -328,6 +368,56 @@ void profile_init(const gchar *requested_id) {
         save_registry(registry, nullptr);
 }
 
+void profile_init_guest() {
+    if (!guest_root.empty()) {
+        std::string previous = guest_root;
+        guest_root.clear();
+        remove_tree(previous.c_str(), nullptr);
+    }
+
+    GError *error = nullptr;
+    gchar *root = g_dir_make_tmp("kite-guest-XXXXXX", &error);
+    if (!root) {
+        g_clear_error(&error);
+        gchar *fallback =
+            g_strdup_printf("%s/kite-guest-%08x", g_get_user_runtime_dir(), g_random_int());
+        root = fallback;
+    }
+
+    guest_root = root;
+    g_free(root);
+    guest_active = true;
+    current_id = kGuestProfileId;
+    current_name = kGuestProfileName;
+    rebuild_cached_paths();
+
+    ensure_directory(cached_data_dir);
+    ensure_directory(cached_config_dir);
+    ensure_directory(cached_cache_dir);
+    ensure_directory(cached_storage_dir);
+    ensure_directory(cached_webkit_data_dir);
+    ensure_directory(cached_webkit_cache_dir);
+
+    g_printerr("[Kite] Using a temporary guest profile at %s\n", guest_root.c_str());
+}
+
+bool profile_is_guest() {
+    return guest_active || current_id == kGuestProfileId;
+}
+
+void profile_cleanup_guest() {
+    if (!guest_root.empty()) {
+        remove_tree(guest_root.c_str(), nullptr);
+        guest_root.clear();
+    }
+    guest_active = false;
+    clear_cached_paths();
+    if (current_id == kGuestProfileId) {
+        current_id = kDefaultProfileId;
+        current_name = kDefaultProfileName;
+    }
+}
+
 const gchar *profile_current_id() {
     return current_id.c_str();
 }
@@ -338,6 +428,45 @@ const gchar *profile_current_name() {
 
 bool profile_is_default() {
     return current_id == kDefaultProfileId;
+}
+
+std::string profile_avatar_text(const std::string &name) {
+    std::string trimmed = trimmed_name(name.c_str());
+    if (trimmed.empty())
+        return "?";
+
+    gchar **words = g_strsplit_set(trimmed.c_str(), " \t-_", -1);
+    std::string result;
+    for (gchar **word = words; *word && result.size() < 2; word++) {
+        if (!**word)
+            continue;
+        const gchar *p = *word;
+        gunichar c = g_utf8_get_char(p);
+        if (!c)
+            continue;
+        gchar buffer[8] = {0};
+        int length = g_unichar_to_utf8(g_unichar_toupper(c), buffer);
+        result.append(buffer, length);
+    }
+    g_strfreev(words);
+    return result.empty() ? "?" : result;
+}
+
+int profile_avatar_color(const std::string &id) {
+    if (id == kGuestProfileId)
+        return -1;
+    return (int)(g_str_hash(id.c_str()) % kAvatarColorCount);
+}
+
+void profile_avatar_rgb(const std::string &id, double *red, double *green, double *blue) {
+    int index = profile_avatar_color(id);
+    AvatarColor color = index < 0 ? AvatarColor{0.45, 0.50, 0.56} : kAvatarColors[index];
+    if (red)
+        *red = color.red;
+    if (green)
+        *green = color.green;
+    if (blue)
+        *blue = color.blue;
 }
 
 std::vector<ProfileInfo> profile_list() {
@@ -351,6 +480,8 @@ std::vector<ProfileInfo> profile_list() {
 bool profile_exists(const gchar *id) {
     if (!id || !valid_profile_id(id))
         return false;
+    if (std::string(id) == kGuestProfileId)
+        return true;
     Registry registry = load_registry();
     return registry.exists(id);
 }
@@ -471,11 +602,14 @@ bool profile_delete(const gchar *id, std::string *error) {
 bool profile_switch(const gchar *id) {
     if (!id || !valid_profile_id(id))
         return false;
-    Registry registry = load_registry();
-    if (!registry.exists(id))
-        return false;
 
-    write_active_marker(id);
+    bool guest = std::string(id) == kGuestProfileId;
+    if (!guest) {
+        Registry registry = load_registry();
+        if (!registry.exists(id))
+            return false;
+        write_active_marker(id);
+    }
 
     gchar *exe = g_file_read_link("/proc/self/exe", nullptr);
     if (!exe)
@@ -483,7 +617,7 @@ bool profile_switch(const gchar *id) {
     if (!exe)
         return false;
 
-    gchar *argument = g_strdup_printf("--profile=%s", id);
+    gchar *argument = guest ? g_strdup("--guest") : g_strdup_printf("--profile=%s", id);
     gchar *argv[] = {exe, argument, nullptr};
     GError *error = nullptr;
     gboolean spawned = g_spawn_async(nullptr, argv, nullptr, G_SPAWN_DEFAULT, nullptr, nullptr, nullptr, &error);
@@ -495,6 +629,10 @@ bool profile_switch(const gchar *id) {
     g_free(argument);
     g_free(exe);
     return spawned;
+}
+
+bool profile_switch_guest() {
+    return profile_switch(kGuestProfileId);
 }
 
 const gchar *profile_data_dir() {

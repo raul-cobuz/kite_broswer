@@ -2,6 +2,16 @@
 
 #include <glib.h>
 
+#include <string>
+#include <vector>
+
+struct NewTabLink {
+    std::string title;
+    std::string url;
+};
+
+constexpr int KITE_MAX_NEWTAB_LINKS = 12;
+
 void load_settings();
 void save_settings();
 
@@ -48,3 +58,23 @@ bool settings_sync_on_startup();
 void settings_set_sync_on_startup(bool enabled);
 bool settings_sync_settings();
 void settings_set_sync_settings(bool enabled);
+
+// Start-page customization. These preferences are separate from the five
+// pinned links stored in the SQLite database: they control the presentation of
+// kite://newtab and its optional quick-link shelf.
+bool settings_newtab_clock();
+void settings_set_newtab_clock(bool enabled);
+bool settings_newtab_weather();
+void settings_set_newtab_weather(bool enabled);
+const gchar *settings_newtab_weather_city();
+void settings_set_newtab_weather_city(const gchar *city);
+const gchar *settings_newtab_weather_units();
+void settings_set_newtab_weather_units(const gchar *units);
+const gchar *settings_newtab_background();
+void settings_set_newtab_background(const gchar *value);
+bool settings_newtab_compact();
+void settings_set_newtab_compact(bool enabled);
+std::vector<NewTabLink> settings_newtab_links();
+void settings_set_newtab_links(const std::vector<NewTabLink> &links);
+bool settings_newtab_link_add(const gchar *title, const gchar *url);
+bool settings_newtab_link_remove(const gchar *url);
