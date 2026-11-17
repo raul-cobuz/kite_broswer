@@ -2,6 +2,7 @@
 
 #include "browser_window.h"
 #include "settings.h"
+#include "url_utils.h"
 
 static gchar *permission_origin(WebKitWebView *web_view) {
     const gchar *uri = webkit_web_view_get_uri(web_view);
@@ -10,18 +11,8 @@ static gchar *permission_origin(WebKitWebView *web_view) {
     if (g_str_has_prefix(uri, "file://"))
         return g_strdup("local files");
 
-    GError *error = nullptr;
-    GUri *parsed = g_uri_parse(uri, G_URI_FLAGS_NONE, &error);
-    if (!parsed) {
-        if (error)
-            g_error_free(error);
-        return g_strdup("this page");
-    }
-
-    const gchar *host = g_uri_get_host(parsed);
-    gchar *origin = g_strdup((host && *host) ? host : "this page");
-    g_uri_unref(parsed);
-    return origin;
+    std::string origin = url_origin(uri);
+    return g_strdup(origin.empty() ? "this page" : origin.c_str());
 }
 
 static gchar *permission_description(WebKitPermissionRequest *request, const gchar **key) {

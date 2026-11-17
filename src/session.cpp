@@ -2,8 +2,6 @@
 
 #include <glib/gstdio.h>
 
-#include <algorithm>
-
 #include "profile.h"
 
 static gchar *session_path() {
@@ -35,7 +33,6 @@ bool session_load(SessionState *state) {
         g_free(path);
         return false;
     }
-    count = std::min(count, 100);
 
     for (gint i = 0; i < count; i++) {
         gchar *key = g_strdup_printf("url%d", i);

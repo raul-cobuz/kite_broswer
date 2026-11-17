@@ -73,7 +73,6 @@ void privacy_apply_context(WebKitWebContext *context) {
             g_mkdir_with_parents(dir, 0700);
             g_free(dir);
             webkit_cookie_manager_set_persistent_storage(cookies, path, WEBKIT_COOKIE_PERSISTENT_STORAGE_SQLITE);
-            g_printerr("[Kite DEBUG] persistent cookies=%s\n", path);
             g_free(path);
         }
         webkit_cookie_manager_set_accept_policy(cookies, WEBKIT_COOKIE_POLICY_ACCEPT_NO_THIRD_PARTY);

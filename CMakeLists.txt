@@ -15,6 +15,7 @@ pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)
 # Testable, UI-independent logic.
 add_library(kite_core STATIC
     src/adblock_rules.cpp
+    src/bridge_logic.cpp
     src/history.cpp
     src/omnibox.cpp
     src/profile.cpp
@@ -103,6 +104,11 @@ if(BUILD_TESTING)
     target_link_libraries(test_sync PRIVATE kite_core)
     target_compile_options(test_sync PRIVATE -Wall -Wextra)
     add_test(NAME sync COMMAND test_sync)
+
+    add_executable(test_bridge_logic tests/test_bridge_logic.cpp)
+    target_link_libraries(test_bridge_logic PRIVATE kite_core)
+    target_compile_options(test_bridge_logic PRIVATE -Wall -Wextra)
+    add_test(NAME bridge_logic COMMAND test_bridge_logic)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)

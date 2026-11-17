@@ -116,10 +116,10 @@ def clean_domains(domains):
 
 def domain_url_filter(domain):
     escaped = domain.replace(".", r"\.")
-    # WebKit's URL-filter parser supports groups and character classes but
-    # rejects disjunctions such as ([/:]|$). A prefix match catches every
-    # request to the domain and its subdomains.
-    return r"^https?://([^/]+\.)?" + escaped
+    # Canonical URLs always continue after the host with ':' (port) or '/'
+    # (path). Requiring one of those stops example.com from matching
+    # example.com.tracker.test. WebKit rejects disjunctions, so use a class.
+    return r"^https?://([^/]+\.)?" + escaped + r"[:/]"
 
 
 def build_rules(ad_domains=None, tracker_domains=None, allowlist=None):

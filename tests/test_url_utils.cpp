@@ -93,6 +93,14 @@ int main() {
     expect_eq(url_host("not a url"), "", "invalid URL has no host");
     expect_eq(url_host(""), "", "empty URL has no host");
 
+    expect_eq(url_origin("https://Example.COM/path"), "https://example.com:443", "https origin gets default port");
+    expect_eq(url_origin("http://example.com"), "http://example.com:80", "http origin gets default port");
+    expect_eq(url_origin("https://example.com:8443/path"), "https://example.com:8443", "explicit port kept");
+    expect_eq(url_origin("http://127.0.0.1:8080/admin"), "http://127.0.0.1:8080", "IPv4 origin keeps port");
+    expect_eq(url_origin("https://[::1]:8443/"), "https://[::1]:8443", "IPv6 origin keeps brackets");
+    expect_eq(url_origin("file:///tmp/page.html"), "", "file URL has no origin");
+    expect_eq(url_origin("not a url"), "", "invalid URL has no origin");
+
     expect_eq(strip_tracking_params("https://x.test/a?utm_source=news&b=2&fbclid=abc#frag"),
               "https://x.test/a?b=2#frag", "tracking params removed, fragment kept");
     expect_eq(strip_tracking_params("https://x.test/a?utm_source=news"), "https://x.test/a",

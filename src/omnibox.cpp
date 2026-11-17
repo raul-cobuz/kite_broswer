@@ -18,20 +18,13 @@ struct Candidate {
     int score = 0;
 };
 
-std::string lower(const std::string &text) {
-    gchar *result = g_ascii_strdown(text.c_str(), -1);
-    std::string value = result ? result : "";
-    g_free(result);
-    return value;
-}
-
 bool contains(const std::string &haystack, const std::string &needle) {
-    return lower(haystack).find(needle) != std::string::npos;
+    return lower_ascii(haystack).find(needle) != std::string::npos;
 }
 
 int match_bonus(const OmniboxSuggestion &suggestion, const std::string &needle) {
-    std::string title = lower(suggestion.title);
-    std::string url = lower(suggestion.url);
+    std::string title = lower_ascii(suggestion.title);
+    std::string url = lower_ascii(suggestion.url);
     int bonus = 0;
     if (title.rfind(needle, 0) == 0)
         bonus += 8;
@@ -98,7 +91,7 @@ std::vector<OmniboxSuggestion> omnibox_suggestions(const gchar *text, bool inclu
         return results;
 
     std::string query = text;
-    std::string needle = lower(query);
+    std::string needle = lower_ascii(query);
     if (limit <= 0)
         limit = 10;
 
@@ -131,11 +124,13 @@ std::vector<OmniboxSuggestion> omnibox_suggestions(const gchar *text, bool inclu
     }
 
     if (include_personal) {
+        std::vector<PinnedLink> pins = pinned_links_list();
+        std::vector<HistoryEntry> bookmarks = bookmarks_list();
         std::unordered_map<std::string, OmniboxKind> known;
-        for (const auto &pin : pinned_links_list())
+        for (const auto &pin : pins)
             known[pin.url] = OmniboxKind::Pin;
 
-        for (const auto &bookmark : bookmarks_list()) {
+        for (const auto &bookmark : bookmarks) {
             if (known.find(bookmark.url) == known.end())
                 known[bookmark.url] = OmniboxKind::Bookmark;
         }
@@ -151,7 +146,7 @@ std::vector<OmniboxSuggestion> omnibox_suggestions(const gchar *text, bool inclu
                 add_candidate(candidates, seen, suggestion, 20 + match_bonus(suggestion, needle));
         }
 
-        for (const auto &pin : pinned_links_list()) {
+        for (const auto &pin : pins) {
             OmniboxSuggestion suggestion;
             suggestion.kind = OmniboxKind::Pin;
             suggestion.title = pin.title;
@@ -161,7 +156,7 @@ std::vector<OmniboxSuggestion> omnibox_suggestions(const gchar *text, bool inclu
                 add_candidate(candidates, seen, suggestion, 20 + match_bonus(suggestion, needle));
         }
 
-        for (const auto &bookmark : bookmarks_list()) {
+        for (const auto &bookmark : bookmarks) {
             OmniboxSuggestion suggestion;
             suggestion.kind = known[bookmark.url] == OmniboxKind::Pin ? OmniboxKind::Pin : OmniboxKind::Bookmark;
             suggestion.title = bookmark.title;

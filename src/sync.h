@@ -12,8 +12,10 @@ struct SyncResult {
     bool settings_applied = false;
 };
 
-// Exports bookmarks, pins, history and selected settings to a JSON file.
-bool sync_write_file(const gchar *path, std::string *error);
+// Exports bookmarks, pins, history, tombstones and (optionally) settings to a
+// JSON file. With include_settings false the existing settings block is kept
+// verbatim so an opting-out machine never publishes its own settings.
+bool sync_write_file(const gchar *path, bool include_settings, std::string *error);
 
 // Merges a JSON file into the current profile. Existing local entries win for
 // conflicting titles; history keeps the newest visit time and highest count.

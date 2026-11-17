@@ -7,4 +7,3 @@
 void app_context_init();
 
 WebKitWebContext *app_webkit_context();
-bool app_context_is_isolated();

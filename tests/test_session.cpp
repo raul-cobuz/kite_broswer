@@ -60,6 +60,18 @@ int main() {
     check(loaded.active_index == 2, "active tab is clamped");
     check(loaded.pinned.size() == 3 && loaded.pinned[2], "pinned flags survive a resave");
 
+    SessionState many;
+    for (int i = 0; i < 120; i++)
+        many.urls.push_back("https://example.test/tab" + std::to_string(i));
+    many.pinned.assign(many.urls.size(), false);
+    many.active_index = 119;
+    session_save(many);
+    SessionState many_loaded;
+    check(session_load(&many_loaded), "large session loads");
+    check(many_loaded.urls.size() == 120, "session does not drop tabs past 100");
+    check(many_loaded.urls.back() == "https://example.test/tab119", "last large-session tab survives");
+    check(many_loaded.active_index == 119, "large-session active tab survives");
+
     saved.urls.clear();
     session_save(saved);
     check(!g_file_test(session_file, G_FILE_TEST_EXISTS), "empty session removes file");

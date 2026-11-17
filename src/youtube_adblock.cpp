@@ -287,8 +287,7 @@ static const char *YOUTUBE_ADBLOCK_JS = R"JS(
 )JS";
 
 void youtube_adblock_set_enabled(bool enabled) {
-    WebKitUserContentManager *manager = adblock_content_manager();
-    if (!manager)
+    if (!adblock_content_manager())
         return;
 
     if (enabled == youtube_script_added)
@@ -300,12 +299,12 @@ void youtube_adblock_set_enabled(bool enabled) {
                 YOUTUBE_ADBLOCK_JS, WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
                 WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, nullptr, nullptr);
         }
-        webkit_user_content_manager_add_script(manager, youtube_script);
+        adblock_add_script_to_all(youtube_script);
         youtube_script_added = true;
         g_print("[Kite] YouTube ad blocking enabled.\n");
     } else {
         if (youtube_script)
-            webkit_user_content_manager_remove_script(manager, youtube_script);
+            adblock_remove_script_from_all(youtube_script);
         youtube_script_added = false;
         g_print("[Kite] YouTube ad blocking disabled.\n");
     }

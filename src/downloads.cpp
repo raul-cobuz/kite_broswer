@@ -159,7 +159,6 @@ static void on_download_finished(WebKitDownload *download, gpointer user_data) {
 }
 
 static void on_download_failed(WebKitDownload *download, GError *error, gpointer user_data) {
-    g_printerr("[Kite DEBUG] download-failed download=%p error=%s\n", (void *)download, error ? error->message : "(null)");
     DownloadItem *item = (DownloadItem *)user_data;
     if (!item)
         return;
@@ -233,7 +232,6 @@ static DownloadItem *create_download_row(WebKitDownload *download, const gchar *
 
 static gboolean on_decide_destination(WebKitDownload *download, const gchar *suggested_filename,
                                       gpointer user_data) {
-    g_printerr("[Kite DEBUG] decide-destination fired download=%p suggested=%s\n", (void *)download, suggested_filename ? suggested_filename : "(null)");
     DownloadItem *item = (DownloadItem *)user_data;
     const gchar *filename = suggested_filename && *suggested_filename ? suggested_filename : nullptr;
     if (!filename && item)
@@ -283,7 +281,6 @@ static gboolean on_decide_destination(WebKitDownload *download, const gchar *sug
 }
 
 void on_download_started(WebKitWebContext *context, WebKitDownload *download, gpointer user_data) {
-    g_printerr("[Kite DEBUG] download-started fired context=%p download=%p\n", (void *)context, (void *)download);
     if (!download)
         return;
 
@@ -361,6 +358,5 @@ GtkWidget *create_downloads_button() {
 void init_downloads(WebKitWebContext *context) {
     if (!context)
         context = webkit_web_context_get_default();
-    g_printerr("[Kite DEBUG] init_downloads context=%p\n", (void *)context);
     g_signal_connect(context, "download-started", G_CALLBACK(on_download_started), nullptr);
 }

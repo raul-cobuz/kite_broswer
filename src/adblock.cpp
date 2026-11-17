@@ -12,14 +12,16 @@
 #include "youtube_adblock.h"
 
 static WebKitUserContentManager *content_manager = nullptr;
+static WebKitUserContentManager *private_content_manager = nullptr;
 static WebKitUserContentFilterStore *filter_store = nullptr;
 static WebKitUserContentFilter *base_filter = nullptr;
 static WebKitUserContentFilter *exception_filter = nullptr;
 static gboolean base_added = false;
+static gboolean private_base_added = false;
 static gboolean exception_added = false;
+static gboolean private_exception_added = false;
 static gboolean adblock_enabled = true;
 static guint exception_generation = 0;
-static guint exception_serial = 0;
 
 static bool is_youtube_host(const std::string &host) {
     return host == "youtube.com" || g_str_has_suffix(host.c_str(), ".youtube.com") ||
@@ -90,16 +92,29 @@ static void apply_base_filter() {
         base_added = FALSE;
         g_print("[Kite] Ad and tracker blocking disabled.\n");
     }
+
+    if (private_content_manager) {
+        if (adblock_enabled && !private_base_added) {
+            webkit_user_content_manager_add_filter(private_content_manager, base_filter);
+            private_base_added = TRUE;
+        } else if (!adblock_enabled && private_base_added) {
+            webkit_user_content_manager_remove_filter(private_content_manager, base_filter);
+            private_base_added = FALSE;
+        }
+    }
 }
 
 static void remove_exception_filter() {
     if (exception_filter) {
         if (exception_added && content_manager)
             webkit_user_content_manager_remove_filter(content_manager, exception_filter);
+        if (private_exception_added && private_content_manager)
+            webkit_user_content_manager_remove_filter(private_content_manager, exception_filter);
         webkit_user_content_filter_unref(exception_filter);
         exception_filter = nullptr;
     }
     exception_added = false;
+    private_exception_added = false;
 }
 
 static void on_exception_saved(GObject *source, GAsyncResult *res, gpointer user_data) {
@@ -124,6 +139,10 @@ static void on_exception_saved(GObject *source, GAsyncResult *res, gpointer user
         exception_filter = filter;
         webkit_user_content_manager_add_filter(content_manager, filter);
         exception_added = TRUE;
+        if (private_content_manager) {
+            webkit_user_content_manager_add_filter(private_content_manager, filter);
+            private_exception_added = TRUE;
+        }
         g_print("[Kite] Per-site ad-block exceptions applied.\n");
     }
 }
@@ -149,12 +168,10 @@ void adblock_reload_exceptions() {
     }
 
     std::string json = adblock_exception_rules_json(exceptions);
-    gchar *name = g_strdup_printf("kite_exceptions_%u", ++exception_serial);
     GBytes *bytes = g_bytes_new(json.data(), json.size());
-    webkit_user_content_filter_store_save(filter_store, name, bytes, nullptr, on_exception_saved,
+    webkit_user_content_filter_store_save(filter_store, "kite_exceptions", bytes, nullptr, on_exception_saved,
                                           GUINT_TO_POINTER(exception_generation));
     g_bytes_unref(bytes);
-    g_free(name);
 }
 
 static void on_base_filter_saved(GObject *source, GAsyncResult *res, gpointer user_data) {
@@ -184,9 +201,33 @@ WebKitUserContentManager *adblock_content_manager() {
     return content_manager;
 }
 
+WebKitUserContentManager *adblock_private_content_manager() {
+    return private_content_manager;
+}
+
+void adblock_add_script_to_all(WebKitUserScript *script) {
+    if (!script)
+        return;
+    if (content_manager)
+        webkit_user_content_manager_add_script(content_manager, script);
+    if (private_content_manager)
+        webkit_user_content_manager_add_script(private_content_manager, script);
+}
+
+void adblock_remove_script_from_all(WebKitUserScript *script) {
+    if (!script)
+        return;
+    if (content_manager)
+        webkit_user_content_manager_remove_script(content_manager, script);
+    if (private_content_manager)
+        webkit_user_content_manager_remove_script(private_content_manager, script);
+}
+
 void init_adblocker() {
     if (!content_manager)
         content_manager = webkit_user_content_manager_new();
+    if (!private_content_manager)
+        private_content_manager = webkit_user_content_manager_new();
 
     adblock_enabled = settings_block_ads();
     sync_youtube_adblock();

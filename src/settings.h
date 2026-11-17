@@ -14,6 +14,8 @@ constexpr int KITE_MAX_NEWTAB_LINKS = 12;
 
 void load_settings();
 void save_settings();
+// Modification time of settings.ini, used to reject stale synced settings.
+gint64 settings_saved_at();
 
 gchar *permission_key(const gchar *type, const gchar *origin);
 gint get_permission_decision(const gchar *type, const gchar *origin);
@@ -36,9 +38,10 @@ void settings_set_restore_session(bool enabled);
 const gchar *settings_download_directory();
 void settings_set_download_directory(const gchar *path);
 
-double settings_site_zoom(const gchar *host);
-void settings_set_site_zoom(const gchar *host, double level);
-void settings_clear_site_zoom(const gchar *host);
+// Site zoom keys are origins: scheme://host:port (see url_origin).
+double settings_site_zoom(const gchar *origin);
+void settings_set_site_zoom(const gchar *origin, double level);
+void settings_clear_site_zoom(const gchar *origin);
 
 bool settings_block_ads();
 void settings_set_block_ads(bool enabled);

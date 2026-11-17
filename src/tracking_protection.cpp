@@ -69,21 +69,16 @@ static WebKitUserScript *tracking_script_handle = nullptr;
 static void add_tracking_script() {
     if (tracking_script_handle)
         return;
-    WebKitUserContentManager *manager = adblock_content_manager();
-    if (!manager)
-        return;
     tracking_script_handle = webkit_user_script_new(
         tracking_script, WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_END, nullptr,
         nullptr);
-    webkit_user_content_manager_add_script(manager, tracking_script_handle);
+    adblock_add_script_to_all(tracking_script_handle);
 }
 
 static void remove_tracking_script() {
     if (!tracking_script_handle)
         return;
-    WebKitUserContentManager *manager = adblock_content_manager();
-    if (manager)
-        webkit_user_content_manager_remove_script(manager, tracking_script_handle);
+    adblock_remove_script_from_all(tracking_script_handle);
     webkit_user_script_unref(tracking_script_handle);
     tracking_script_handle = nullptr;
 }

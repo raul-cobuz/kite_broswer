@@ -21,6 +21,22 @@ static WebKitWebContext *incognito_context = nullptr;
 static std::vector<std::string> closed_tabs;
 static const size_t max_closed_tabs = 10;
 static int next_tab_id = 1;
+static guint session_save_timeout = 0;
+
+static gboolean on_session_save_timeout(gpointer user_data) {
+    (void)user_data;
+    session_save_timeout = 0;
+    save_browser_session();
+    return G_SOURCE_REMOVE;
+}
+
+// A page load changes the tab's URL, but rewriting the whole session file on
+// every commit and finish is wasteful. Coalesce the writes instead.
+static void schedule_session_save() {
+    if (session_save_timeout)
+        g_source_remove(session_save_timeout);
+    session_save_timeout = g_timeout_add(400, on_session_save_timeout, nullptr);
+}
 
 static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebKitWebView *related,
                                       gboolean load_url);
@@ -41,6 +57,30 @@ static WebKitWebContext *get_incognito_context() {
         g_signal_connect(incognito_context, "download-started", G_CALLBACK(on_download_started), NULL);
     }
     return incognito_context;
+}
+
+// An ephemeral context is only private for as long as it lives. Drop it with
+// the last incognito view so a new incognito session starts with no cookies.
+static bool incognito_view_open() {
+    auto notebook_has_incognito = [](GtkWidget *notebook_widget) {
+        if (!notebook_widget)
+            return false;
+        gint pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(notebook_widget));
+        for (gint i = 0; i < pages; i++) {
+            GtkWidget *child = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_widget), i);
+            if (child && WEBKIT_IS_WEB_VIEW(child) && webview_is_incognito(WEBKIT_WEB_VIEW(child)))
+                return true;
+        }
+        return false;
+    };
+    return notebook_has_incognito(browser.notebook) || notebook_has_incognito(browser.split_notebook);
+}
+
+static void release_incognito_context_if_unused() {
+    if (incognito_context && !incognito_view_open()) {
+        g_object_unref(incognito_context);
+        incognito_context = nullptr;
+    }
 }
 
 static void apply_webview_settings(WebKitWebView *web_view) {
@@ -67,11 +107,11 @@ static void apply_site_zoom(WebKitWebView *web_view) {
     if (!is_trackable_url(uri))
         return;
 
-    std::string host = url_host(uri);
-    if (host.empty())
+    std::string origin = url_origin(uri);
+    if (origin.empty())
         return;
 
-    double zoom = settings_site_zoom(host.c_str());
+    double zoom = settings_site_zoom(origin.c_str());
     if (zoom != webkit_web_view_get_zoom_level(web_view))
         webkit_web_view_set_zoom_level(web_view, zoom);
 }
@@ -236,7 +276,6 @@ static gboolean on_decide_policy(WebKitWebView *web_view, WebKitPolicyDecision *
 
 static void on_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_event, gpointer user_data) {
     const gchar *uri = webkit_web_view_get_uri(web_view);
-    g_printerr("[Kite DEBUG] load-changed view=%p event=%d uri=%s\n", (void *)web_view, (int)load_event, uri ? uri : "(null)");
 
     if (uri && is_google_challenge_url(uri) && settings_google_fallback()) {
         std::string query = google_challenge_query(uri);
@@ -266,7 +305,6 @@ static void on_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_event,
         apply_site_zoom(web_view);
         update_bookmark_button(web_view);
         update_tab_visuals(web_view);
-        save_browser_session();
     }
 
     if (load_event == WEBKIT_LOAD_FINISHED) {
@@ -289,7 +327,7 @@ static void on_load_changed(WebKitWebView *web_view, WebKitLoadEvent load_event,
 
         update_bookmark_button(web_view);
         update_tab_visuals(web_view);
-        save_browser_session();
+        schedule_session_save();
     }
 
     if (web_view != get_active_webview())
@@ -547,7 +585,7 @@ static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebK
         web_view = WEBKIT_WEB_VIEW(webkit_web_view_new_with_related_view(related));
     } else if (incognito) {
         web_view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", get_incognito_context(),
-                                                "user-content-manager", adblock_content_manager(), NULL));
+                                                "user-content-manager", adblock_private_content_manager(), NULL));
     } else {
         web_view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", app_webkit_context(),
                                                 "user-content-manager", adblock_content_manager(), NULL));
@@ -555,7 +593,6 @@ static WebKitWebView *create_tab_view(const gchar *url, gboolean incognito, WebK
     g_object_set_data(G_OBJECT(web_view), "is_incognito", GINT_TO_POINTER(incognito ? 1 : 0));
     g_object_set_data(G_OBJECT(web_view), "kite_tab_id", GINT_TO_POINTER(next_tab_id++));
     g_object_set_data_full(G_OBJECT(web_view), "kite_requested_url", g_strdup(url), g_free);
-    g_printerr("[Kite DEBUG] create_tab url=%s incognito=%d view_ctx=%p app_ctx=%p\n", url ? url : "(null)", (int)incognito, (void *)webkit_web_view_get_context(web_view), (void *)app_webkit_context());
 
     apply_webview_settings(web_view);
 
@@ -786,6 +823,7 @@ void close_tab(WebKitWebView *web_view) {
     }
 
     split_view_after_tab_removed(notebook);
+    release_incognito_context_if_unused();
     save_browser_session();
 
     gint remaining = 0;

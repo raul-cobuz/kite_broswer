@@ -2,6 +2,7 @@
 
 #include <glib.h>
 #include <glib/gstdio.h>
+#include <sqlite3.h>
 
 #include <cstdio>
 #include <string>
@@ -55,12 +56,12 @@ int main() {
     }
 
     history_update_title("https://example.com/a", "Example title");
-    entries = history_search("example title", 10);
+    entries = history_completions("example title", 10);
     check(entries.size() == 1, "search finds updated title");
     if (!entries.empty())
         check(entries[0].title == "Example title", "title updated");
 
-    entries = history_search("other", 10);
+    entries = history_completions("other", 10);
     check(entries.size() == 1, "search by URL text");
     if (!entries.empty())
         check(entries[0].url == "https://other.test/page", "search returns the right URL");
@@ -132,6 +133,27 @@ int main() {
     check(bookmark_exists("https://example.com/a"), "bookmark kept for bookmarked URL");
     check(pinned_links_count() == KITE_MAX_PINNED_LINKS, "pinned links survive reopen");
     history_close();
+
+    // A database created before search_text existed must be backfilled.
+    gchar *old_path = g_build_filename(tmp, "old.db", NULL);
+    sqlite3 *old_db = nullptr;
+    if (sqlite3_open(old_path, &old_db) == SQLITE_OK) {
+        sqlite3_exec(old_db,
+                     "CREATE TABLE history("
+                     "url TEXT PRIMARY KEY,title TEXT NOT NULL DEFAULT '',host TEXT NOT NULL DEFAULT '',"
+                     "last_visit INTEGER NOT NULL,visit_count INTEGER NOT NULL DEFAULT 1) WITHOUT ROWID;"
+                     "INSERT INTO history VALUES('https://legacy.test/','Legacy title','legacy.test',1,1);",
+                     nullptr, nullptr, nullptr);
+        sqlite3_close(old_db);
+        check(history_init(old_path), "old database migrates");
+        entries = history_completions("legacy", 10);
+        check(find_entry(entries, "https://legacy.test/") != nullptr, "migrated rows are searchable");
+        history_close();
+    } else {
+        check(false, "old database created");
+    }
+    g_remove(old_path);
+    g_free(old_path);
 
     g_remove(db_path);
     g_free(db_path);

@@ -36,7 +36,7 @@ static std::string escape_query(const std::string &text) {
     return result;
 }
 
-static std::string lower_ascii(const std::string &text) {
+std::string lower_ascii(const std::string &text) {
     gchar *lower = g_ascii_strdown(text.c_str(), -1);
     std::string result = lower ? lower : "";
     g_free(lower);
@@ -225,6 +225,44 @@ std::string url_host(const std::string &url) {
         gchar *lower = g_ascii_strdown(host, -1);
         result = lower;
         g_free(lower);
+    }
+    g_uri_unref(parsed);
+    return result;
+}
+
+std::string url_origin(const std::string &url) {
+    if (url.empty())
+        return "";
+
+    GError *error = nullptr;
+    GUri *parsed = g_uri_parse(url.c_str(), G_URI_FLAGS_NONE, &error);
+    if (!parsed) {
+        g_clear_error(&error);
+        return "";
+    }
+
+    const gchar *scheme = g_uri_get_scheme(parsed);
+    const gchar *host = g_uri_get_host(parsed);
+    std::string result;
+    if (scheme && *scheme && host && *host) {
+        gint port = g_uri_get_port(parsed);
+        if (port < 0) {
+            if (g_ascii_strcasecmp(scheme, "http") == 0)
+                port = 80;
+            else if (g_ascii_strcasecmp(scheme, "https") == 0)
+                port = 443;
+        }
+        gchar *lower_scheme = g_ascii_strdown(scheme, -1);
+        gchar *lower_host = g_ascii_strdown(host, -1);
+        std::string host_part = lower_host;
+        if (host_part.find(':') != std::string::npos && host_part.front() != '[')
+            host_part = "[" + host_part + "]";
+        if (port >= 0)
+            result = std::string(lower_scheme) + "://" + host_part + ":" + std::to_string(port);
+        else
+            result = std::string(lower_scheme) + "://" + host_part;
+        g_free(lower_scheme);
+        g_free(lower_host);
     }
     g_uri_unref(parsed);
     return result;

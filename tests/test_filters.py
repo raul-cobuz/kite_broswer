@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import sys
 import tempfile
 
@@ -32,11 +33,17 @@ def main():
         "duplicate domains must be deduplicated, special rules added once"
 
     ad_rule = find_block_rule(rules, r"ads\.test")
-    assert ad_rule["trigger"]["url-filter"] == r"^https?://([^/]+\.)?ads\.test"
+    assert ad_rule["trigger"]["url-filter"] == r"^https?://([^/]+\.)?ads\.test[:/]"
     assert "|" not in ad_rule["trigger"]["url-filter"], "WebKit rejects disjunctions"
     assert "document" not in ad_rule["trigger"]["resource-type"]
     assert "script" in ad_rule["trigger"]["resource-type"]
     assert "load-type" not in ad_rule["trigger"]
+
+    pattern = ad_rule["trigger"]["url-filter"]
+    assert re.search(pattern, "https://ads.test/pixel.js"), "exact host matches"
+    assert re.search(pattern, "https://sub.ads.test:443/pixel.js"), "subdomain and port match"
+    assert not re.search(pattern, "https://ads.test.tracker.test/pixel.js"), \
+        "host prefix without a boundary must not match"
 
     # Keep every generated resource type inside the set WebKit accepts;
     # one unknown string rejects the entire filter list at runtime.

@@ -92,7 +92,7 @@ int main() {
     check(std::string(settings_homepage()) == "kite://newtab", "settings untouched when disabled");
 
     gchar *export_path = g_build_filename(tmp, "export.json", nullptr);
-    check(sync_write_file(export_path, &sync_error), "sync export written");
+    check(sync_write_file(export_path, true, &sync_error), "sync export written");
     gchar *contents = nullptr;
     check(g_file_get_contents(export_path, &contents, nullptr, nullptr), "sync export readable");
     if (contents) {
@@ -115,6 +115,78 @@ int main() {
         check(std::string(contents).find("https://remote-bookmark.test/") != std::string::npos,
               "merged file contains imported bookmark");
         g_free(contents);
+    }
+
+    // Deletions travel through the sync file instead of being re-imported.
+    bookmark_add("https://tombstone-bookmark.test/", "Tombstone bookmark");
+    history_record_visit("https://tombstone-history.test/", "Tombstone history");
+    bookmark_remove("https://tombstone-bookmark.test/");
+    history_delete_url("https://tombstone-history.test/");
+    check(sync_write_file(export_path, true, &sync_error), "tombstone export written");
+    contents = nullptr;
+    check(g_file_get_contents(export_path, &contents, nullptr, nullptr), "tombstone export readable");
+    if (contents) {
+        std::string exported(contents);
+        g_free(contents);
+        check(exported.find("\"kind\":\"bookmark\"") != std::string::npos, "bookmark tombstone exported");
+        check(exported.find("\"kind\":\"history\"") != std::string::npos, "history tombstone exported");
+    }
+
+    const char *stale = R"JSON({
+      "format": 1,
+      "bookmarks": [{"url": "https://tombstone-bookmark.test/", "title": "Stale", "created": 1}],
+      "history": [{"url": "https://tombstone-history.test/", "title": "Stale", "last_visit": 1, "visit_count": 1}],
+      "deleted": [
+        {"kind": "bookmark", "url": "https://tombstone-bookmark.test/", "deleted_at": 9999999999999999},
+        {"kind": "history", "url": "https://tombstone-history.test/", "deleted_at": 9999999999999999}
+      ]
+    })JSON";
+    check(g_file_set_contents(export_path, stale, -1, nullptr), "stale sync file written");
+    check(sync_merge_file(export_path, false, &result, &sync_error), "stale sync file merged");
+    check(!bookmark_exists("https://tombstone-bookmark.test/"), "deleted bookmark not resurrected");
+    bool tombstone_history_found = false;
+    for (const auto &entry : history_recent(100)) {
+        if (entry.url == "https://tombstone-history.test/")
+            tombstone_history_found = true;
+    }
+    check(!tombstone_history_found, "deleted history not resurrected");
+
+    // A newer bookmark is a deliberate re-add and clears the tombstone.
+    const char *readded = R"JSON({
+      "format": 1,
+      "bookmarks": [{"url": "https://readd-bookmark.test/", "title": "Re-added", "created": 2000}],
+      "deleted": [{"kind": "bookmark", "url": "https://readd-bookmark.test/", "deleted_at": 1000}]
+    })JSON";
+    check(g_file_set_contents(export_path, readded, -1, nullptr), "re-add sync file written");
+    check(sync_merge_file(export_path, false, &result, &sync_error), "re-add sync file merged");
+    check(bookmark_exists("https://readd-bookmark.test/"), "bookmark created after a deletion is accepted");
+
+    // Stale settings are ignored once the local settings file is newer.
+    save_settings();
+    gint64 fresh_settings = settings_saved_at();
+    check(fresh_settings > 0, "settings mtime available");
+    std::string current_homepage = settings_homepage();
+    std::string stale_settings = "{\"format\":1,\"settings\":{\"homepage\":\"https://stale.example/\","
+                                 "\"updated_at\":" +
+                                 std::to_string(fresh_settings - 1000000) + "}}";
+    check(g_file_set_contents(export_path, stale_settings.c_str(), -1, nullptr), "stale settings written");
+    check(sync_merge_file(export_path, true, &result, &sync_error), "stale settings merged");
+    check(std::string(settings_homepage()) == current_homepage, "older settings do not overwrite local ones");
+
+    // Opting out of settings sync keeps the existing shared settings block.
+    const char *kept_settings = R"JSON({
+      "format": 1,
+      "settings": {"homepage": "https://keep.example/", "updated_at": 1}
+    })JSON";
+    check(g_file_set_contents(export_path, kept_settings, -1, nullptr), "kept settings written");
+    check(sync_write_file(export_path, false, &sync_error), "settings-opt-out export written");
+    contents = nullptr;
+    check(g_file_get_contents(export_path, &contents, nullptr, nullptr), "settings-opt-out readable");
+    if (contents) {
+        std::string exported(contents);
+        g_free(contents);
+        check(exported.find("https://keep.example/") != std::string::npos, "existing shared settings preserved");
+        check(exported.find(current_homepage) == std::string::npos, "local settings not published when disabled");
     }
 
     history_close();

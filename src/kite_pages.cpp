@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "browser_window.h"
+#include "bridge_logic.h"
 #include "extensions.h"
 #include "history.h"
 #include "profile.h"
@@ -35,23 +36,85 @@ static std::string format_visit_time(gint64 micros) {
     return result;
 }
 
-static std::string query_param(const gchar *query, const gchar *name) {
-    if (!query || !*query)
-        return "";
-    GHashTable *params = g_uri_parse_params(query, -1, "&", G_URI_PARAMS_WWW_FORM, nullptr);
-    if (!params)
-        return "";
-    const gchar *value = (const gchar *)g_hash_table_lookup(params, name);
-    std::string result = value ? value : "";
-    g_hash_table_destroy(params);
-    return result;
-}
-
 static std::string escape_query_value(const std::string &value) {
     gchar *escaped = g_uri_escape_string(value.c_str(), nullptr, FALSE);
     std::string result = escaped ? escaped : "";
     g_free(escaped);
     return result;
+}
+
+// Every browser run gets a fresh secret. Mutating kite:// paths are only
+// honoured when the link or form carries it, so a web page (or a stale URL
+// restored from a session file) cannot trigger them.
+static gchar *kite_action_token = nullptr;
+
+static std::string add_token_to_internal_links(const std::string &html) {
+    if (!kite_action_token)
+        return html;
+    const std::string token = kite_action_token;
+    std::string out;
+    size_t pos = 0;
+    while (true) {
+        size_t start = html.find("href=\"kite://", pos);
+        if (start == std::string::npos) {
+            out += html.substr(pos);
+            break;
+        }
+        size_t url_start = start + 6; // skip href="
+        size_t end = html.find('"', url_start);
+        if (end == std::string::npos) {
+            out += html.substr(pos);
+            break;
+        }
+        out += html.substr(pos, end - pos);
+        std::string url = html.substr(url_start, end - url_start);
+        out += url.find('?') == std::string::npos ? "?k=" : "&k=";
+        out += token;
+        pos = end;
+    }
+    return out;
+}
+
+static std::string add_token_to_internal_forms(const std::string &html) {
+    if (!kite_action_token)
+        return html;
+    const std::string token = kite_action_token;
+    std::string out;
+    size_t pos = 0;
+    while (true) {
+        size_t start = html.find("<form", pos);
+        if (start == std::string::npos) {
+            out += html.substr(pos);
+            break;
+        }
+        size_t tag_end = html.find('>', start);
+        if (tag_end == std::string::npos) {
+            out += html.substr(pos);
+            break;
+        }
+        out += html.substr(pos, tag_end - pos + 1);
+        std::string tag = html.substr(start, tag_end - start + 1);
+        if (tag.find("action=\"kite://") != std::string::npos)
+            out += "<input type=\"hidden\" name=\"k\" value=\"" + token + "\">";
+        pos = tag_end + 1;
+    }
+    return out;
+}
+
+static std::string seal_internal_html(const std::string &html) {
+    return add_token_to_internal_forms(add_token_to_internal_links(html));
+}
+
+static bool confirm_destructive_action(const char *title, const char *message) {
+    if (!browser.main_window)
+        return false;
+    GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(browser.main_window), GTK_DIALOG_MODAL,
+                                               GTK_MESSAGE_WARNING, GTK_BUTTONS_CANCEL, "%s", title);
+    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", message);
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "_Continue", GTK_RESPONSE_ACCEPT);
+    gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+    return response == GTK_RESPONSE_ACCEPT;
 }
 
 struct SearchHit {
@@ -2341,7 +2404,7 @@ static std::string sync_page(bool incognito, const std::string &path, const gcha
             g_mkdir_with_parents(folder, 0700);
             gchar *path_out = g_build_filename(folder, sync_file_name(), nullptr);
             std::string error;
-            if (sync_write_file(path_out, &error)) {
+            if (sync_write_file(path_out, settings_sync_settings(), &error)) {
                 notice = "<div class=\"notice\">Exported current profile data to <code>" +
                          html_escape(path_out) + "</code>.</div>";
             } else {
@@ -2432,6 +2495,28 @@ static void on_kite_request(WebKitURISchemeRequest *request, gpointer user_data)
     std::string host_name = host ? host : "";
     std::string path_name = path ? path : "";
 
+    // Paths are actions; only the read-only root page is safe. Without the
+    // per-run token, fall back to the plain page so stale or forged URLs can
+    // never mutate state.
+    if (!path_name.empty() && path_name != "/") {
+        bool allowed = kite_action_permitted(path_name, query ? query : "",
+                                             kite_action_token ? kite_action_token : "");
+        if (allowed && host_name == "history" && path_name == "/clear") {
+            allowed = confirm_destructive_action("Clear all history?",
+                                                 "Every history entry in this profile will be removed.");
+        } else if (allowed && host_name == "profiles" && path_name == "/delete") {
+            allowed = confirm_destructive_action("Delete this profile?",
+                                                 "The profile and all of its browsing data will be deleted.");
+        } else if (allowed && host_name == "extensions" && path_name == "/remove") {
+            allowed = confirm_destructive_action("Remove this extension?",
+                                                 "The extension and its local data will be deleted.");
+        }
+        if (!allowed) {
+            path_name = "/";
+            query = nullptr;
+        }
+    }
+
     std::string html;
     if (host_name.empty() || host_name == "newtab")
         html = newtab_page(incognito, path_name, query);
@@ -2451,6 +2536,7 @@ static void on_kite_request(WebKitURISchemeRequest *request, gpointer user_data)
         html = not_found_page();
 
     g_uri_unref(parsed);
+    html = seal_internal_html(html);
 
     GBytes *bytes = g_bytes_new(html.data(), html.size());
     GInputStream *stream = g_memory_input_stream_new_from_bytes(bytes);
@@ -2463,5 +2549,7 @@ static void on_kite_request(WebKitURISchemeRequest *request, gpointer user_data)
 void init_kite_pages(WebKitWebContext *context) {
     if (!context)
         return;
+    if (!kite_action_token)
+        kite_action_token = g_uuid_string_random();
     webkit_web_context_register_uri_scheme(context, "kite", on_kite_request, nullptr, nullptr);
 }

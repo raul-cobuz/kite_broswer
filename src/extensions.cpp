@@ -12,6 +12,7 @@
 #include "adblock.h"
 #include "app_context.h"
 #include "browser_window.h"
+#include "bridge_logic.h"
 #include "profile.h"
 #include "tabs.h"
 
@@ -1043,7 +1044,6 @@ std::string handle_tabs(const ExtensionInfo &info, const std::string &type, JSCV
     if (type == "tabs.query") {
         JSCValue *query = jsc_value_object_get_property(payload, "query");
         bool active_only = query && json_bool(query, "active");
-        bool include_incognito = query && json_bool(query, "incognito");
         if (query)
             g_object_unref(query);
 
@@ -1051,7 +1051,9 @@ std::string handle_tabs(const ExtensionInfo &info, const std::string &type, JSCV
         for (const auto &tab : tabs_list()) {
             if (active_only && !tab.active)
                 continue;
-            if (!include_incognito && tab.incognito)
+            // Incognito tabs are never exposed to extensions. There is no
+            // per-extension incognito opt-in yet.
+            if (tab.incognito)
                 continue;
             filtered.push_back(tab);
         }
@@ -1061,7 +1063,7 @@ std::string handle_tabs(const ExtensionInfo &info, const std::string &type, JSCV
     if (type == "tabs.get") {
         int id = json_int(payload, "id");
         for (const auto &tab : tabs_list()) {
-            if (tab.id == id)
+            if (tab.id == id && !tab.incognito)
                 return ok_reply(tab_to_json(tab));
         }
         return error_reply("No tab with id " + std::to_string(id) + " exists.");
@@ -1104,7 +1106,7 @@ std::string handle_tabs(const ExtensionInfo &info, const std::string &type, JSCV
         if (properties)
             g_object_unref(properties);
         WebKitWebView *view = tab_webview_for_id(id);
-        if (!view)
+        if (!view || webview_is_incognito(view))
             return error_reply("No tab with id " + std::to_string(id) + " exists.");
         if (!url.empty())
             webkit_web_view_load_uri(view, url.c_str());
@@ -1137,8 +1139,11 @@ std::string handle_tabs(const ExtensionInfo &info, const std::string &type, JSCV
         }
         if (ids)
             g_object_unref(ids);
-        for (int id : values)
-            tab_close_id(id);
+        for (int id : values) {
+            WebKitWebView *view = tab_webview_for_id(id);
+            if (view && !webview_is_incognito(view))
+                tab_close_id(id);
+        }
         return ok_reply("null");
     }
 
@@ -1197,7 +1202,9 @@ gboolean handle_api_message(JSCValue *value, WebKitScriptMessageReply *reply) {
     if (type.empty() || extension_id.empty())
         return respond_error(reply, context, "Malformed extension API message.");
 
-    if (type == "runtime.response") {
+    ExtensionApiRoute route = extension_api_route(type);
+
+    if (route == ExtensionApiRoute::RuntimeResponse) {
         std::string request_id = json_string(value, "requestId");
         std::string response = json_string(value, "response");
         std::string payload;
@@ -1214,25 +1221,25 @@ gboolean handle_api_message(JSCValue *value, WebKitScriptMessageReply *reply) {
     if (!info || !info->enabled)
         return respond_error(reply, context, "That extension is not enabled.");
 
-    if (type == "storage.get" || type == "storage.set" || type == "storage.remove" || type == "storage.clear") {
+    if (route == ExtensionApiRoute::Storage) {
         std::string result = handle_storage(*info, type, value, context);
         reply_json(reply, context, result);
         return TRUE;
     }
 
-    if (type.rfind("tabs.", 0) == 0 && type != "tabs.sendMessage") {
+    if (route == ExtensionApiRoute::Tabs) {
         std::string result = handle_tabs(*info, type, value, context);
         reply_json(reply, context, result);
         return TRUE;
     }
 
-    if (type.rfind("notifications.", 0) == 0) {
+    if (route == ExtensionApiRoute::Notifications) {
         std::string result = handle_notifications(*info, type, value);
         reply_json(reply, context, result);
         return TRUE;
     }
 
-    if (type == "runtime.sendMessage") {
+    if (route == ExtensionApiRoute::RuntimeMessage) {
         if (message_context == "background") {
             reply_json(reply, context,
                        error_reply("Could not establish connection. Receiving end does not exist."));
@@ -1249,7 +1256,7 @@ gboolean handle_api_message(JSCValue *value, WebKitScriptMessageReply *reply) {
         return TRUE;
     }
 
-    if (type == "tabs.sendMessage") {
+    if (route == ExtensionApiRoute::TabMessage) {
         int tab_id = json_int(value, "tabId");
         JSCValue *message = jsc_value_object_get_property(value, "message");
         std::string message_json = value_to_json(message);
@@ -1509,7 +1516,6 @@ void create_background_host(ExtensionInfo &info) {
 
     background_hosts.push_back(host);
     std::string url = background_url(info);
-    g_printerr("[Kite DEBUG] background extension=%s url=%s\n", info.id.c_str(), url.c_str());
     webkit_web_view_load_uri(host->web_view, url.c_str());
 }
 
@@ -1674,6 +1680,10 @@ void clear_injections() {
 // Folder install helpers
 
 bool copy_directory(const gchar *source, const gchar *destination, std::string &error) {
+    if (!source || !*source || g_file_test(source, G_FILE_TEST_IS_SYMLINK)) {
+        error = "The extension folder must not be a symbolic link.";
+        return false;
+    }
     if (g_mkdir_with_parents(destination, 0755) != 0) {
         error = g_strerror(errno);
         return false;
@@ -1696,7 +1706,8 @@ bool copy_directory(const gchar *source, const gchar *destination, std::string &
         if (g_file_test(child_source, G_FILE_TEST_IS_DIR) &&
             !g_file_test(child_source, G_FILE_TEST_IS_SYMLINK)) {
             ok = copy_directory(child_source, child_destination, error);
-        } else if (g_file_test(child_source, G_FILE_TEST_IS_REGULAR)) {
+        } else if (g_file_test(child_source, G_FILE_TEST_IS_REGULAR) &&
+                   !g_file_test(child_source, G_FILE_TEST_IS_SYMLINK)) {
             GFile *from = g_file_new_for_path(child_source);
             GFile *to = g_file_new_for_path(child_destination);
             GError *copy_error = nullptr;

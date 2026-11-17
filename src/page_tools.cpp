@@ -13,7 +13,6 @@ namespace {
 struct ScreenshotRequest {
     WebKitWebView *view = nullptr;
     gchar *path = nullptr;
-    gboolean full_page = FALSE;
 };
 
 std::string screenshot_directory() {
@@ -145,7 +144,6 @@ void screenshot_active_page(bool full_page) {
     ScreenshotRequest *request = g_new0(ScreenshotRequest, 1);
     request->view = WEBKIT_WEB_VIEW(g_object_ref(web_view));
     request->path = g_strdup(path.c_str());
-    request->full_page = full_page ? TRUE : FALSE;
 
     webkit_web_view_get_snapshot(
         web_view, full_page ? WEBKIT_SNAPSHOT_REGION_FULL_DOCUMENT : WEBKIT_SNAPSHOT_REGION_VISIBLE,

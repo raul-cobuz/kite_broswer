@@ -16,6 +16,7 @@
 #include "page_tools.h"
 #include "settings.h"
 #include "tabs.h"
+#include "url_utils.h"
 
 namespace {
 
@@ -42,17 +43,10 @@ struct PaletteWidgets {
 
 PaletteWidgets palette;
 
-std::string lower_text(const std::string &text) {
-    gchar *value = g_ascii_strdown(text.c_str(), -1);
-    std::string result = value ? value : "";
-    g_free(value);
-    return result;
-}
-
 int match_score(const std::string &text, const std::string &needle, int prefix_score, int contains_score) {
     if (needle.empty())
         return contains_score;
-    std::string haystack = lower_text(text);
+    std::string haystack = lower_ascii(text);
     if (haystack.rfind(needle, 0) == 0)
         return prefix_score;
     if (haystack.find(needle) != std::string::npos)
@@ -166,7 +160,7 @@ void execute_item(const CommandItem &item) {
 }
 
 std::vector<CommandItem> ranked_items(const std::string &query) {
-    std::string needle = lower_text(query);
+    std::string needle = lower_ascii(query);
     WebKitWebView *active = get_active_webview();
     bool incognito = active && webview_is_incognito(active);
     std::vector<std::pair<int, CommandItem>> ranked;

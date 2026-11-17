@@ -590,7 +590,6 @@ static void navigate_url_entry(const gchar *text) {
         return;
 
     std::string target_url = resolve_url_input(text);
-    g_printerr("[Kite DEBUG] navigate_url_entry text=%s -> target=%s\n", text, target_url.c_str());
     webkit_web_view_load_uri(web_view, target_url.c_str());
     gtk_widget_grab_focus(GTK_WIDGET(web_view));
 }
@@ -786,14 +785,14 @@ static void set_active_zoom(double level) {
     const gchar *uri = webkit_web_view_get_uri(web_view);
     if (!can_bookmark_uri(uri))
         return;
-    std::string host = url_host(uri);
-    if (host.empty())
+    std::string origin = url_origin(uri);
+    if (origin.empty())
         return;
 
     if (level > 0.999 && level < 1.001)
-        settings_clear_site_zoom(host.c_str());
+        settings_clear_site_zoom(origin.c_str());
     else
-        settings_set_site_zoom(host.c_str(), level);
+        settings_set_site_zoom(origin.c_str(), level);
     save_settings();
 }
 

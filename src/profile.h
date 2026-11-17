@@ -50,5 +50,3 @@ const gchar *profile_cache_dir();
 const gchar *profile_extension_storage_dir();
 const gchar *profile_webkit_data_dir();
 const gchar *profile_webkit_cache_dir();
-const gchar *profile_base_data_dir();
-const gchar *profile_base_config_dir();

@@ -34,13 +34,13 @@ int main() {
 
     load_settings();
     check(!settings_dark_mode(), "dark mode defaults to off");
-    check(get_permission_decision("media", "example.com") == -1, "unknown permission decision");
+    check(get_permission_decision("media", "https://example.com:443") == -1, "unknown permission decision");
     expect_str(settings_homepage(), "kite://newtab", "homepage defaults to new tab");
     expect_str(settings_search_engine(), "google", "search engine defaults to Google");
     check(settings_google_fallback(), "Google fallback defaults to on");
     check(settings_restore_session(), "session restore defaults to on");
     check(settings_download_directory() && *settings_download_directory(), "download directory has a default");
-    check(settings_site_zoom("example.com") == 1.0, "site zoom defaults to 100%");
+    check(settings_site_zoom("https://example.com:443") == 1.0, "site zoom defaults to 100%");
     check(settings_block_ads(), "ad blocking defaults to on");
     check(settings_strip_tracking_params(), "tracking parameter removal defaults to on");
     check(!settings_clear_on_exit(), "clear on exit defaults to off");
@@ -53,14 +53,15 @@ int main() {
     check(settings_newtab_links().empty(), "custom quick links start empty");
 
     settings_set_dark_mode(true);
-    remember_permission_decision("media", "example.com", TRUE);
+    remember_permission_decision("media", "https://example.com:443", TRUE);
     remember_permission_decision("geolocation", "fe80::1%eth0", FALSE);
 
-    check(get_permission_decision("media", "example.com") == 1, "allow decision in memory");
+    check(get_permission_decision("media", "https://example.com:443") == 1, "allow decision in memory");
+    check(get_permission_decision("media", "http://example.com:80") == -1, "scheme and port isolate decisions");
     check(get_permission_decision("geolocation", "fe80::1%eth0") == 0, "deny decision in memory");
 
-    gchar *key = permission_key("media", "example.com");
-    expect_str(key, "media|example.com", "plain origin key");
+    gchar *key = permission_key("media", "https://example.com:443");
+    expect_str(key, "media|https:_2F_2Fexample.com:443", "origin key keeps scheme and port");
     g_free(key);
 
     key = permission_key("geolocation", "fe80::1%eth0");
@@ -83,9 +84,9 @@ int main() {
     check(!settings_google_fallback(), "Google fallback disabled in memory");
     settings_set_restore_session(false);
     settings_set_download_directory("/tmp/kite-downloads");
-    settings_set_site_zoom("example.com", 1.25);
-    settings_set_site_zoom("a_b.test", 2.0);
-    check(settings_site_zoom("example.com") == 1.25, "site zoom in memory");
+    settings_set_site_zoom("https://example.com:443", 1.25);
+    settings_set_site_zoom("https://a_b.test:443", 2.0);
+    check(settings_site_zoom("https://example.com:443") == 1.25, "site zoom in memory");
 
     settings_set_block_ads(false);
     settings_set_strip_tracking_params(false);
@@ -139,7 +140,7 @@ int main() {
     check(g_key_file_load_from_file(file, settings_path, G_KEY_FILE_NONE, nullptr), "settings file loads");
     check(g_key_file_get_boolean(file, "appearance", "dark_mode", nullptr), "dark mode persisted");
 
-    gchar *value = g_key_file_get_string(file, "permissions", "media|example.com", nullptr);
+    gchar *value = g_key_file_get_string(file, "permissions", "media|https:_2F_2Fexample.com:443", nullptr);
     expect_str(value, "allow", "allow persisted");
     g_free(value);
 
@@ -185,23 +186,24 @@ int main() {
     value = g_key_file_get_string(file, "newtab", "link0_url", nullptr);
     expect_str(value, "https://example.com/docs", "quick link URL persisted");
     g_free(value);
-    check(g_key_file_get_double(file, "zoom", "zoom|example.com", nullptr) == 1.25, "site zoom persisted");
-    check(g_key_file_get_double(file, "zoom", "zoom|a_5Fb.test", nullptr) == 2.0,
-          "site zoom key escapes host");
+    check(g_key_file_get_double(file, "zoom", "zoom|https:_2F_2Fexample.com:443", nullptr) == 1.25,
+          "site zoom persisted");
+    check(g_key_file_get_double(file, "zoom", "zoom|https:_2F_2Fa_5Fb.test:443", nullptr) == 2.0,
+          "site zoom key escapes origin");
     g_key_file_free(file);
 
     // Reload from disk into a fresh in-memory state.
     load_settings();
     check(settings_dark_mode(), "dark mode restored");
-    check(get_permission_decision("media", "example.com") == 1, "allow restored");
+    check(get_permission_decision("media", "https://example.com:443") == 1, "allow restored");
     check(get_permission_decision("geolocation", "fe80::1%eth0") == 0, "deny restored");
     expect_str(settings_homepage(), "https://example.org", "homepage restored");
     expect_str(settings_search_engine(), "brave", "search engine restored");
     check(!settings_google_fallback(), "fallback preference restored");
     check(!settings_restore_session(), "session restore restored");
     expect_str(settings_download_directory(), "/tmp/kite-downloads", "download directory restored");
-    check(settings_site_zoom("example.com") == 1.25, "site zoom restored");
-    check(settings_site_zoom("a_b.test") == 2.0, "escaped site zoom restored");
+    check(settings_site_zoom("https://example.com:443") == 1.25, "site zoom restored");
+    check(settings_site_zoom("https://a_b.test:443") == 2.0, "escaped site zoom restored");
     check(!settings_block_ads(), "ad blocking restored");
     check(!settings_strip_tracking_params(), "tracking removal restored");
     check(settings_clear_on_exit(), "clear on exit restored");
@@ -235,10 +237,10 @@ int main() {
           "empty exception list removes key");
     g_key_file_free(file);
 
-    settings_clear_site_zoom("example.com");
+    settings_clear_site_zoom("https://example.com:443");
     save_settings();
     load_settings();
-    check(settings_site_zoom("example.com") == 1.0, "cleared site zoom defaults to 100%");
+    check(settings_site_zoom("https://example.com:443") == 1.0, "cleared site zoom defaults to 100%");
 
     std::vector<NewTabLink> many_links;
     for (int i = 0; i < KITE_MAX_NEWTAB_LINKS + 5; i++) {

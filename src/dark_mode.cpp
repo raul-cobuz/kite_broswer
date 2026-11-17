@@ -428,17 +428,16 @@ static void set_webview_dark_mode(WebKitWebView *web_view, bool enable) {
 }
 
 static void set_dark_mode_script(bool enable) {
-    WebKitUserContentManager *manager = adblock_content_manager();
-    if (!manager || dark_script_added == enable)
+    if (dark_script_added == enable)
         return;
 
     if (enable) {
         if (!dark_mode_script)
             dark_mode_script = webkit_user_script_new(DARK_MODE_JS, WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
                                                       WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, NULL, NULL);
-        webkit_user_content_manager_add_script(manager, dark_mode_script);
+        adblock_add_script_to_all(dark_mode_script);
     } else if (dark_mode_script) {
-        webkit_user_content_manager_remove_script(manager, dark_mode_script);
+        adblock_remove_script_from_all(dark_mode_script);
     }
     dark_script_added = enable;
 }
@@ -468,24 +467,30 @@ void apply_dark_mode(bool enable) {
     set_dark_mode_script(enable);
     sync_native_theme(enable);
 
-    gint n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(browser.notebook));
-    for (gint i = 0; i < n_pages; i++) {
-        GtkWidget *child = gtk_notebook_get_nth_page(GTK_NOTEBOOK(browser.notebook), i);
-        if (!child || !WEBKIT_IS_WEB_VIEW(child))
-            continue;
+    auto apply_to_notebook = [&](GtkWidget *notebook_widget) {
+        if (!notebook_widget)
+            return;
+        gint n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(notebook_widget));
+        for (gint i = 0; i < n_pages; i++) {
+            GtkWidget *child = gtk_notebook_get_nth_page(GTK_NOTEBOOK(notebook_widget), i);
+            if (!child || !WEBKIT_IS_WEB_VIEW(child))
+                continue;
 
-        WebKitWebView *web_view = WEBKIT_WEB_VIEW(child);
-        const gchar *uri = webkit_web_view_get_uri(web_view);
-        if (!uri)
-            uri = (const gchar *)g_object_get_data(G_OBJECT(web_view), "kite_requested_url");
+            WebKitWebView *web_view = WEBKIT_WEB_VIEW(child);
+            const gchar *uri = webkit_web_view_get_uri(web_view);
+            if (!uri)
+                uri = (const gchar *)g_object_get_data(G_OBJECT(web_view), "kite_requested_url");
 
-        if (uri_is_internal(uri)) {
-            // Internal pages generate their palette on the server side.
-            webkit_web_view_reload(web_view);
-        } else {
-            set_webview_dark_mode(web_view, enable);
+            if (uri_is_internal(uri)) {
+                // Internal pages generate their palette on the server side.
+                webkit_web_view_reload(web_view);
+            } else {
+                set_webview_dark_mode(web_view, enable);
+            }
         }
-    }
+    };
+    apply_to_notebook(browser.notebook);
+    apply_to_notebook(browser.split_notebook);
     save_settings();
 }
 

@@ -302,7 +302,6 @@ void load_settings() {
 void save_settings() {
     if (!settings || !settings_file)
         return;
-
     g_key_file_set_boolean(settings, "appearance", "dark_mode", dark_mode);
     g_key_file_set_string(settings, "general", "homepage", settings_homepage());
     g_key_file_set_string(settings, "search", "engine", settings_search_engine());
@@ -380,6 +379,15 @@ void save_settings() {
         g_clear_error(&error);
     }
     g_free(data);
+}
+
+gint64 settings_saved_at() {
+    if (!settings_file)
+        return 0;
+    GStatBuf info;
+    if (g_stat(settings_file, &info) != 0)
+        return 0;
+    return (gint64)info.st_mtim.tv_sec * G_USEC_PER_SEC + (gint64)info.st_mtim.tv_nsec / 1000;
 }
 
 // GKeyFile keys only allow alphanumerics, '-', '_', '.', '|' and ':'. Origins can
@@ -473,28 +481,28 @@ void settings_set_download_directory(const gchar *path) {
     download_directory = g_strdup(path);
 }
 
-double settings_site_zoom(const gchar *host) {
-    if (!site_zoom_levels || !host || !*host)
+double settings_site_zoom(const gchar *origin) {
+    if (!site_zoom_levels || !origin || !*origin)
         return 1.0;
-    gchar *key = permission_key("zoom", host);
+    gchar *key = permission_key("zoom", origin);
     gpointer value = g_hash_table_lookup(site_zoom_levels, key);
     g_free(key);
     return value ? *(double *)value : 1.0;
 }
 
-void settings_set_site_zoom(const gchar *host, double level) {
-    if (!site_zoom_levels || !host || !*host)
+void settings_set_site_zoom(const gchar *origin, double level) {
+    if (!site_zoom_levels || !origin || !*origin)
         return;
-    gchar *key = permission_key("zoom", host);
+    gchar *key = permission_key("zoom", origin);
     double *stored = g_new(double, 1);
     *stored = std::round(clamp_zoom(level) * 100.0) / 100.0;
     g_hash_table_replace(site_zoom_levels, key, stored);
 }
 
-void settings_clear_site_zoom(const gchar *host) {
-    if (!site_zoom_levels || !host || !*host)
+void settings_clear_site_zoom(const gchar *origin) {
+    if (!site_zoom_levels || !origin || !*origin)
         return;
-    gchar *key = permission_key("zoom", host);
+    gchar *key = permission_key("zoom", origin);
     g_hash_table_remove(site_zoom_levels, key);
     g_free(key);
 }

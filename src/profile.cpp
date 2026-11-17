@@ -673,17 +673,3 @@ const gchar *profile_webkit_cache_dir() {
     ensure_directory(cached_webkit_cache_dir);
     return cached_webkit_cache_dir;
 }
-
-const gchar *profile_base_data_dir() {
-    static gchar *base = nullptr;
-    if (!base)
-        base = g_strdup(base_data_path().c_str());
-    return base;
-}
-
-const gchar *profile_base_config_dir() {
-    static gchar *base = nullptr;
-    if (!base)
-        base = g_strdup(base_config_path().c_str());
-    return base;
-}
